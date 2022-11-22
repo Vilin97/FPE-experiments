@@ -1,0 +1,4 @@
+name = "amath"
+uuid = "6df99919-57d4-41fb-9972-d7e5608b966c"
+authors = ["Vasily Ilin <vasilin97@gmail.com>"]
+version = "0.1.0"
