@@ -58,22 +58,41 @@ plot_s_1d(s,xs)
 
 
 
-# understanding runtimes dispatch in `train!`
-using Flux
-function example()
-    actual(x) = 4x + 2
-    x_train, x_test = hcat(0:5...), hcat(6:10...)
-    y_train, y_test = actual.(x_train), actual.(x_test)
-    predict = Dense(1 => 1)
-    loss_(x, y) = Flux.Losses.mse(predict(x), y);
-    opt = Descent()
-    data = [(x_train, y_train)]
+# approximating x -> -x
+using Flux, Random
+Random.seed!(123)
+actual(x) = -x
+x_train = hcat(0:5...)
+y_train = actual.(x_train)
+loss_(x, y) = sum( (predict(x) - y).^2 ) / sum(y_train.^2) ;
+for k in 1:6
+    predict = Chain(
+        Dense(1 => 50, relu),
+        Dense(50 => 50, relu),
+        Dense(50 => 50, relu),
+        Dense(50 => 1));
     parameters = Flux.params(predict)
-    train!(loss_, parameters, data, opt)
+    grads = gradient(() -> loss_(x_train, y_train), parameters)
+    learning_rate = 10. ^-k
+    opt = Descent(learning_rate)
+    loss_(x_train, y_train) # 1.241
+    for _ in 1:10000 
+        Flux.Optimise.update!(opt, Flux.params(predict), grads) 
+    end
+    @show learning_rate, loss_(x_train, y_train) 
+    # (learning_rate, loss_(x_train, y_train)) = (0.1, 0.51563776f0)        
+    # (learning_rate, loss_(x_train, y_train)) = (0.010000000000000002, 1.0894512f0)
+    # (learning_rate, loss_(x_train, y_train)) = (0.001, 0.92247385f0)      
+    # (learning_rate, loss_(x_train, y_train)) = (0.0001, 1.2685742f0)      
+    # (learning_rate, loss_(x_train, y_train)) = (1.0e-5, 0.66605574f0)     
+    # (learning_rate, loss_(x_train, y_train)) = (1.0e-6, 1.1450504f0) 
 end
 
+# p=plot(xs[1,1,:], ys[1,1,:]);
+# plot!(p, xs[1,1,:], s(xs)[1,1,:])
 
 
+# experimenting with train! vs update!
 using Flux: params, train!
 s = Chain(
   maybewrap,
