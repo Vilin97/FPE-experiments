@@ -64,28 +64,26 @@ Random.seed!(123)
 actual(x) = -x
 x_train = hcat(0:5...)
 y_train = actual.(x_train)
-loss_(x, y) = sum( (predict(x) - y).^2 ) / sum(y_train.^2) ;
 for k in 1:6
     predict = Chain(
-        Dense(1 => 50, relu),
-        Dense(50 => 50, relu),
-        Dense(50 => 50, relu),
-        Dense(50 => 1));
+        Dense(d => d))
     parameters = Flux.params(predict)
-    grads = gradient(() -> loss_(x_train, y_train), parameters)
+    loss_(x, y) = sum( (predict(x) - y).^2 ) / sum(y_train.^2) ;
     learning_rate = 10. ^-k
     opt = Descent(learning_rate)
     loss_(x_train, y_train) # 1.241
     for _ in 1:10000 
+        grads = gradient(() -> loss_(x_train, y_train), parameters)
         Flux.Optimise.update!(opt, Flux.params(predict), grads) 
     end
     @show learning_rate, loss_(x_train, y_train) 
-    # (learning_rate, loss_(x_train, y_train)) = (0.1, 0.51563776f0)        
-    # (learning_rate, loss_(x_train, y_train)) = (0.010000000000000002, 1.0894512f0)
-    # (learning_rate, loss_(x_train, y_train)) = (0.001, 0.92247385f0)      
-    # (learning_rate, loss_(x_train, y_train)) = (0.0001, 1.2685742f0)      
-    # (learning_rate, loss_(x_train, y_train)) = (1.0e-5, 0.66605574f0)     
-    # (learning_rate, loss_(x_train, y_train)) = (1.0e-6, 1.1450504f0) 
+    # (learning_rate, loss_(x_train, y_train)) = (0.1, 0.18440121f0)
+    # (learning_rate, loss_(x_train, y_train)) = (0.010000000000000002, 0.17265555f0)
+    # (learning_rate, loss_(x_train, y_train)) = (0.001, 0.4768501f0)
+    # (learning_rate, loss_(x_train, y_train)) = (0.0001, 5.737957f0)
+    # (learning_rate, loss_(x_train, y_train)) = (1.0e-5, 0.47478837f0)
+    # (learning_rate, loss_(x_train, y_train)) = (1.0e-6, 0.012801164f0)
+    # NOTE: loss is never close to zero!
 end
 
 # p=plot(xs[1,1,:], ys[1,1,:]);

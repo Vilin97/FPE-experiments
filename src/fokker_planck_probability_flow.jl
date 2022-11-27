@@ -18,29 +18,22 @@ loss(s, xs :: Array{T, 3}) where T =  loss(s, eachslice(xs, dims = 3))
 score(ρ, x) = sum(logpdf(ρ, x))
 propagate(x, t, Δt, b, D, s) = x + Δt * b(x, t) + D(x, t)*s(x)
 
-# error of s wrt score(ρ₀)
-function error(s, ρ₀, xs)
-    ys = gradient(x -> score(ρ₀, x), xs)[1]
-    ys_sum_squares = sum(ys.^2)
-    absolute, relative = sum( (s(xs) - ys).^2 / size(xs, 3)), sum( (s(xs) - ys).^2 / ys_sum_squares )
-end
-
 function custom_train!(s, xs; optimiser = Adam(5. * 10^-3), num_steps = 25)
     θ = params(s)
-    grads = gradient(() -> loss(s, xs), θ)
     for _ in 1:num_steps
-      Flux.update!(optimiser, θ, grads)
+        grads = gradient(() -> loss(s, xs), θ)
+        Flux.update!(optimiser, θ, grads)
     end
 end
 
-function initialize_s!(s, ρ₀, xs; optimiser = Adam(10^-4), ε = 1.)
+function initialize_s!(s, ρ₀, xs; optimiser = Adam(10^-4), ε = 10^-4)
     θ = params(s)
     ys = gradient(x -> score(ρ₀, x), xs)[1]
     ys_sum_squares = sum(ys.^2)
-    loss(s) = sum( (s(xs) - ys).^2 / ys_sum_squares )
-    grads = gradient(() -> loss(s), θ)
-    while loss(s) > ε
-      Flux.update!(optimiser, θ, grads)
+    square_error(s) = sum( (s(xs) - ys).^2 / ys_sum_squares )
+    while square_error(s) > ε
+        grads = gradient(() -> square_error(s), θ)
+        Flux.update!(optimiser, θ, grads)
     end
 end
 
@@ -62,6 +55,7 @@ end
 function sbtm!(trajectories, Δts, b, D, s)
     t = zero(eltype(Δts))
     for (k, Δt) in enumerate(Δts)
+        @show k
         xs_k = trajectories[:, :, :, k]
         custom_train!(s, xs_k)
         for (j, x) in enumerate(eachslice(xs_k, dims = 3))
@@ -77,7 +71,8 @@ function animate_2d(trajectories; samples = 1, fps = 5)
                 title = "time 0",
                 label = nothing, 
                 color=RGB(0.0, 0.0, 1.0), 
-                xlims = (-1.5, 1.5), ylims = (-1.5, 1.5));
+                xlims = (-1.5, 1.5), ylims = (-1.5, 1.5),
+                markersize = 3);
     anim = @animate for k ∈ axes(trajectories, 4)
         λ = k/size(trajectories, 4)
         red = λ > 0.5 ? 2. *(λ - 0.5) : 0.
@@ -87,7 +82,8 @@ function animate_2d(trajectories; samples = 1, fps = 5)
                   title = "time $k",
                   label = nothing, 
                   color = RGB(red, green, blue), 
-                  xlims = (-1.5, 1.5), ylims = (-1.5, 1.5))
+                  xlims = (-1.5, 1.5), ylims = (-1.5, 1.5),
+                  markersize = 3)
   end
   gif(anim, "anim_fps$fps.gif", fps = fps)
 end
@@ -104,10 +100,13 @@ function attractive_origin()
       Dense(d => 50, relu),
       Dense(50 => d))
     xs = reshape(Float64[-1  0  1 -1  0  1 -1  0  1;
-                         -1 -1 -1  0  0  0  1  1  1], d, N, num_samples)
-    sbtm(xs, Δts, b, D, s)
+                         -1 -1 -1  0  0  0  1  1  1], d, N, num_samples);
+    print("Initializing s...")
+    initialize_s!(s, MvNormal(zeros(d), I(d)), xs, ε = 10^-2)
+    xs, Δts, b, D, s
 end
-trajectories = attractive_origin()
+args = attractive_origin()
+trajectories = sbtm(args...)
 animation = animate_2d(trajectories, samples = 1:9)
 
 # reproducing first numerical experiment: repelling particles attracted to a moving trap
@@ -134,10 +133,11 @@ function moving_trap()
     xs = reshape(rand(ρ₀, N*num_samples), d, N, num_samples)
 
     s = Chain(
-      Dense(d => 50, relu),
-      Dense(50 => 50, relu),
-      Dense(50 => 50, relu),
-      Dense(50 => d))
+        Dense(d => 50, relu),
+        Dense(50 => 50, relu),
+        Dense(50 => 50, relu),
+        Dense(50 => d))
+    initialize_s!(s, ρ₀, xs)
     sbtm(xs, Δts, b, D, s)
 end
 trajectories = moving_trap()
@@ -150,8 +150,8 @@ runs = [trajectories[:,i,:]]
 
 
 # trying to initialize s to match the score
-using Distributions: Normal
-using Flux: Optimiser
+using Random: seed!
+seed!(123)
 d = 1 # dimension of each particle
 N = 1 # number of particles in a sample
 num_samples = 100 # number of samples
@@ -161,23 +161,24 @@ num_samples = 100 # number of samples
 xs = reshape(rand(ρ₀, N*num_samples), d, N, num_samples)
 
 s = Chain(
-  Dense(d => 50, relu),
-  Dense(50 => 50, relu),
-  Dense(50 => 50, relu),
-  Dense(50 => d))
+#   Dense(d => 50, relu),
+  Dense(d => d))
 θ = params(s)
 ys = gradient(x -> score(ρ₀, x), xs)[1]
 ys_sum_squares = sum(ys.^2)
 loss(s) = sum( (s(xs) - ys).^2 ) / ys_sum_squares
-grads = gradient(() -> loss(s), θ)
-opt = Descent(10^-4)
+opt = Descent(10^-5)
 
-gr = maximum.([grads.grads[p] for p in θ.params])
 loss(s)
-Flux.update!(opt, θ, grads)
+for _ in 1:10^5
+    grads = gradient(() -> loss(s), θ)
+    Flux.update!(opt, θ, grads)
+end
 loss(s)
 
-p=plot(xs[1,1,:], ys[1,1,:]);
-plot!(p, xs[1,1,:], s(xs)[1,1,:])
+
+
+p=plot(xs[1,1,:], ys[1,1,:], marker = true, label = "actual");
+plot!(p, xs[1,1,:], s(xs)[1,1,:], marker = true, label = "learned")
 
 # Finding: immediately (after 1 step) get stuck in a local minimum
