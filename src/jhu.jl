@@ -1,6 +1,8 @@
 using Distributions, Zygote, LinearAlgebra
 using Distributions: pdf, MvNormal
 
+include("utils.jl")
+
 # mollifier ϕ_ε
 mol(ε, x) = exp(-sum(x.^2)/ε)/sqrt((π*ε)^length(x))
 Mol(ε, x, xs) = sum( mol(ε, x - x_q) for x_q in eachslice(xs, dims=3) )
@@ -29,31 +31,9 @@ function jhu!(trajectories, Δts, b, D, ε)
     end
 end
 
-function moving_trap()
-    d = 2 # dimension of each particle
-    N = 3 # number of particles in a sample
-    a = Float32(2.) # trap amplitude
-    w = Float32(1.) # trap frequency
-    α = Float32(0.5) # repelling force
-    num_samples = 2 # number of samples
-    Δts = 0.01*ones(Float32, 200) # time increments
-      
-    # define drift vector field b and diffusion matrix D
-    β(t) = a*Float32[cos(π*w*t), sin(π*w*t)]
-    function b(x, t)
-        attract = β(t) .- x
-        repel = α * (x .- mean(x, dims = 2))
-        attract + repel
-    end
-    D(x, t) = Float32(0.25)
-    
-    # draw samples
-    ρ₀ = MvNormal(β(0.), 0.001*I(d))
-    xs = convert(Array{Float32, 3}, reshape(rand(ρ₀, N*num_samples), d, N, num_samples))
-    xs, Δts, b, D, β
-end
-
-xs, Δts, b, D, β = moving_trap()
-trajectories = jhu(xs, Δts, b, D, 1.0)
-target = hcat(β.(vcat(0., cumsum(Δts)))...)
-animate_2d(trajectories; target = target)
+using Random: seed!
+seed!(123)
+xs, Δts, b, D, ρ₀, target = moving_trap()
+ε = 1.
+trajectories = jhu(xs, Δts, b, D, ε)
+animation = animate_2d(trajectories, "jhu", Δts; target = target, plot_every = 5, fps = 5)
