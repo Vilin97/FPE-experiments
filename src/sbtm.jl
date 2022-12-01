@@ -2,7 +2,7 @@
 
 using Flux, LinearAlgebra, Plots
 using Distributions: MvNormal, logpdf
-using Zygote: gradient, pullback
+using Zygote: gradient, pullback, withgradient
 using Flux.Optimise: Adam
 using Flux: params, train!
 using Statistics: mean
@@ -18,25 +18,54 @@ function divergence(f, v)
         sum(x -> x[i], ∂fᵢ)
     end
 end
-# divergence(s, x) = sum(gradient(x -> s(x)[i], x)[1][i] for i in 1:length(x))
-loss(s, xs :: Array{T, 3}) where T =  (sum(s(xs).^2) + T(2.0)*divergence(s, xs))/size(xs, 3)
+loss(s, xs :: AbstractArray{T, 3}) where T =  (sum(s(xs).^2) + T(2.0)*divergence(s, xs))/size(xs, 3)
 
 score(ρ, x) = convert(eltype(x), sum(logpdf(ρ, x)))
-propagate(x, t, Δt, b, D, s) = x + Δt * b(x, t) + D(x, t)*s(x)
+propagate(x, t, Δt, b, D, s) = x + Δt * (b(x, t) + D(x, t)*s(x))
 
 function plot_losses(losses, epochs)
     p = plot(vec(losses), title = "Score approximation", xaxis = "epochs", yaxis = "loss", label = "training loss")
     scatter!(p, 1:epochs:length(vec(losses)), vec(losses)[1:epochs:end], label = "discrete time propagation", marker = true)
 end
 
-function custom_train!(s, xs; optimiser = Adam(5. * 10^-3), epochs = 25, record_losses = true)
+function custom_train!(s, losses, xs; optimiser = Adam(5. * 10^-3), epochs = 25, record_losses = true, verbose = true)
     θ = params(s)
-    losses = zeros(typeof(loss(s, xs)), epochs)
     for epoch in 1:epochs
-        record_losses && (losses[epoch] = loss(s, xs))
-        @show epoch, losses[epoch]
-        grads = gradient(() -> loss(s, xs), θ)
+        loss_value, grads = withgradient(() -> loss(s, xs), θ)
         Flux.update!(optimiser, θ, grads)
+        record_losses && (losses[epoch] = loss_value)
+        verbose && @show epoch, losses[epoch]
+    end
+    losses
+end
+
+"""
+xs  : sample from initial probability distribution
+Δts : list of Δt's
+b   : Rᵈ → Rᵈ
+D   : Rᵈ → Rᵈˣᵈ
+n   : number of particles
+s   : NN to approximate score ∇log ρ
+"""
+function sbtm(xs, Δts, b, D, s; kwargs...)
+    trajectories = zeros(eltype(xs), size(xs)..., 1+length(Δts)) # trajectories[:, i, j, k] is particle i of sample j at time k
+    trajectories[:, :, :, 1] = xs
+    losses = sbtm!(trajectories, Δts, b, D, s; kwargs...)
+    trajectories, losses
+end
+
+function sbtm!(trajectories :: Array{T, 4}, Δts, b, D, s; verbose = true, kwargs...) where T
+    t = zero(eltype(Δts))
+    losses = zeros(T, epochs, length(Δts))
+    for (k, Δt) in enumerate(Δts)
+        verbose && @show k
+        xs_k = @view trajectories[:, :, :, k]
+        losses[:, k] = custom_train!(s, (@view losses[:, k]), xs_k; verbose = verbose, kwargs...)
+        verbose && @show k
+        for (j, x) in enumerate(eachslice(xs_k, dims = 3))
+            trajectories[:, :, j, k+1] = propagate(x, t, Δt, b, D, s)
+        end
+        t += Δt
     end
     losses
 end
@@ -66,51 +95,16 @@ function initialize_s!(s, ρ₀, xs; optimiser = Adam(10^-4), ε = 10^-4)
     epoch
 end
 
-"""
-xs  : sample from initial probability distribution
-Δts : list of Δt's
-b   : Rᵈ → Rᵈ
-D   : Rᵈ → Rᵈˣᵈ
-n   : number of particles
-s   : NN to approximate score ∇log ρ
-"""
-function sbtm(xs, Δts, b, D, s; kwargs...)
-    trajectories = zeros(eltype(xs), size(xs)..., 1+length(Δts)) # trajectories[:, i, j, k] is particle i of sample j at time k
-    trajectories[:, :, :, 1] = xs
-    losses = sbtm!(trajectories, Δts, b, D, s; kwargs...)
-    trajectories, losses
-end
-
-function sbtm!(trajectories :: Array{T, 4}, Δts, b, D, s; kwargs...) where T
-    t = zero(eltype(Δts))
-    losses = zeros(T, epochs, length(Δts))
-    for (k, Δt) in enumerate(Δts)
-        @show k
-        xs_k = trajectories[:, :, :, k]
-        losses[:, k] = custom_train!(s, xs_k; kwargs...)
-        @show k
-        for (j, x) in enumerate(eachslice(xs_k, dims = 3))
-            trajectories[:, :, j, k+1] = propagate(x, t, Δt, b, D, s)
-        end
-        t += Δt
-    end
-    losses
-end
-
-# toy example
-args = attractive_origin()
-trajectories, losses = sbtm(args...)
-plt = plot_losses(losses, 25)
-animation = animate_2d(trajectories, samples = 1:9)
-
 # first example from paper
 xs, Δts, b, D, ρ₀, target = moving_trap()
 s = initialize_s(ρ₀, xs, 32, 1)
 epochs = 10
-trajectories, losses = sbtm(xs, Δts, b, D, s; optimiser = Adam(10^-3), epochs = epochs, record_losses = true)
+trajectories, losses = sbtm(xs, Δts, b, D, s; optimiser = Adam(10^-3), epochs = epochs, record_losses = true, verbose = true)
 animation = animate_2d(trajectories, "sbtm", Δts, samples = 2, fps = 10, target = target)
 plot_losses(losses, epochs)
 
-# TODO do not redefine the anonymous functions every time in custom_train!, divergence, etc
-# TODO figure out loss blowing up in the stbm
-# TODO speed things up somehow...
+# TODO speed things up somehow. Profile sbtm
+
+@time sbtm(xs, Δts, b, D, s; optimiser = Adam(10^-3), epochs = epochs, record_losses = true)
+@time sbtm(xs, Δts, b, D, s; optimiser = Adam(10^-3), epochs = epochs, record_losses = true, verbose = false)
+@time sbtm(xs, Δts, b, D, s; optimiser = Adam(10^-3), epochs = epochs, record_losses = false, verbose = false)

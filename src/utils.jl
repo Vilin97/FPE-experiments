@@ -1,11 +1,11 @@
 function moving_trap()
     d = 2 # dimension of each particle
-    N = 50 # number of particles in a sample
+    N = 5 # number of particles in a sample
     a = Float32(2.) # trap amplitude
     w = Float32(1.) # trap frequency
     α = Float32(.5) # repelling force
     num_samples = 2 # number of samples
-    Δts = 0.01*ones(Float32, 200) # time increments
+    Δts = 0.01*ones(Float32, 20) # time increments
       
     # define drift vector field b and diffusion matrix D
     β(t) = a*Float32[cos(π*w*t), sin(π*w*t)]
