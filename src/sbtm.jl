@@ -18,7 +18,7 @@ function divergence(f, v)
         sum(x -> x[i], ∂fᵢ)
     end
 end
-loss(s, xs :: AbstractArray{T, 3}) where T =  (sum(s(xs).^2) + T(2.0)*divergence(s, xs))/size(xs, 3)
+loss(s, xs :: AbstractArray{T, 3}) where T =  (sum(x -> x^2, s(xs)) + T(2.0)*divergence(s, xs))/size(xs, 3)
 
 score(ρ, x) = convert(eltype(x), sum(logpdf(ρ, x)))
 propagate(x, t, Δt, b, D, s) = x + Δt * (b(x, t) + D(x, t)*s(x))
