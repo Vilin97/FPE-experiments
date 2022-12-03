@@ -13,9 +13,9 @@ include("utils.jl")
 # divergence of vector field s at x
 function divergence(f, v)
     _, ∂f = pullback(f, v)
+    id = I(length(v))
     sum(eachindex(v)) do i
-        ∂fᵢ = ∂f(onehot(i, eachindex(v)))
-        sum(x -> x[i], ∂fᵢ)
+        ∂f( @view id[i,:] )[1][i]
     end
 end
 loss(s, xs :: AbstractArray{T, 3}) where T =  (sum(x -> x^2, s(xs)) + T(2.0)*divergence(s, xs))/size(xs, 3)
@@ -61,10 +61,7 @@ function sbtm!(trajectories :: Array{T, 4}, Δts, b, D, s; verbose = true, kwarg
         verbose && @show k
         xs_k = @view trajectories[:, :, :, k]
         losses[:, k] = custom_train!(s, (@view losses[:, k]), xs_k; verbose = verbose, kwargs...)
-        verbose && @show k
-        for (j, x) in enumerate(eachslice(xs_k, dims = 3))
-            trajectories[:, :, j, k+1] = propagate(x, t, Δt, b, D, s)
-        end
+        trajectories[:, :, :, k+1] = propagate(xs_k, t, Δt, b, D, s)
         t += Δt
     end
     losses
