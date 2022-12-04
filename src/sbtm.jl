@@ -8,14 +8,12 @@ using Flux: params, train!
 using Statistics: mean
 using Flux.OneHotArrays: onehot
 
-include("utils.jl")
-
 # divergence of vector field s at x
 function divergence(f, v)
     _, ∂f = pullback(f, v)
-    id = I(length(v))
     sum(eachindex(v)) do i
-        ∂f( @view id[i,:] )[1][i]
+        ∂fᵢ = ∂f(onehot(i, eachindex(v)))
+        sum(x -> x[i], ∂fᵢ)
     end
 end
 loss(s, xs :: AbstractArray{T, 3}) where T =  (sum(x -> x^2, s(xs)) + T(2.0)*divergence(s, xs))/size(xs, 3)
@@ -36,7 +34,6 @@ function custom_train!(s, losses, xs; optimiser = Adam(5. * 10^-3), epochs = 25,
         record_losses && (losses[epoch] = loss_value)
         verbose && @show epoch, losses[epoch]
     end
-    losses
 end
 
 """
@@ -60,7 +57,7 @@ function sbtm!(trajectories :: Array{T, 4}, Δts, b, D, s; verbose = true, kwarg
     for (k, Δt) in enumerate(Δts)
         verbose && @show k
         xs_k = @view trajectories[:, :, :, k]
-        losses[:, k] = custom_train!(s, (@view losses[:, k]), xs_k; verbose = verbose, kwargs...)
+        custom_train!(s, (@view losses[:, k]), xs_k; verbose = verbose, kwargs...)
         trajectories[:, :, :, k+1] = propagate(xs_k, t, Δt, b, D, s)
         t += Δt
     end
@@ -74,7 +71,7 @@ function initialize_s(ρ₀, xs, size_hidden, num_hidden; activation = relu, ver
         repeat([Dense(size_hidden, size_hidden), activation], num_hidden)...,
         Dense(size_hidden => d))
     epochs = initialize_s!(s, ρ₀, xs; kwargs...)
-    verbose && print("Took $epochs epochs to initialize. Initial loss: $(loss(s,xs))")
+    verbose && println("Took $epochs epochs to initialize. Initial loss: $(loss(s,xs))")
     return s
 end
 
@@ -92,16 +89,3 @@ function initialize_s!(s, ρ₀, xs; optimiser = Adam(10^-4), ε = 10^-4)
     epoch
 end
 
-# first example from paper
-xs, Δts, b, D, ρ₀, target = moving_trap()
-s = initialize_s(ρ₀, xs, 32, 1)
-epochs = 10
-trajectories, losses = sbtm(xs, Δts, b, D, s; optimiser = Adam(10^-3), epochs = epochs, record_losses = true, verbose = true)
-animation = animate_2d(trajectories, "sbtm", Δts, samples = 2, fps = 10, target = target)
-plot_losses(losses, epochs)
-
-# TODO speed things up somehow. Profile sbtm
-
-@time sbtm(xs, Δts, b, D, s; optimiser = Adam(10^-3), epochs = epochs, record_losses = true)
-@time sbtm(xs, Δts, b, D, s; optimiser = Adam(10^-3), epochs = epochs, record_losses = true, verbose = false)
-@time sbtm(xs, Δts, b, D, s; optimiser = Adam(10^-3), epochs = epochs, record_losses = false, verbose = false)

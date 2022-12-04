@@ -23,17 +23,10 @@ end
 function jhu!(trajectories, Δts, b, D, ε)
     t = zero(eltype(Δts))
     for (k, Δt) in enumerate(Δts)
-        xs_k = trajectories[:, :, :, k]
+        xs_k = @view trajectories[:, :, :, k]
         for (j, x) in enumerate(eachslice(xs_k, dims = 3))
             trajectories[:, :, j, k+1] = propagate(ε, x, xs, t, Δt, b, D)
         end
         t += Δt
     end
 end
-
-using Random: seed!
-seed!(123)
-xs, Δts, b, D, ρ₀, target = moving_trap()
-ε = 1.
-trajectories = jhu(xs, Δts, b, D, ε)
-animation = animate_2d(trajectories, "jhu", Δts; target = target, plot_every = 5, fps = 5)

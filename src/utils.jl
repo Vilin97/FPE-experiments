@@ -1,3 +1,5 @@
+using Plots
+
 function moving_trap(N = 5, num_samples = 2, num_timestamps = 20)
     d = 2 # dimension of each particle
     a = Float32(2.) # trap amplitude
@@ -15,7 +17,7 @@ function moving_trap(N = 5, num_samples = 2, num_timestamps = 20)
     D(x, t) = Float32(0.)
     
     # draw samples
-    ρ₀ = MvNormal(β(0.), 0.25*I(d))
+    ρ₀ = MvNormal(zeros(d), 0.25*I(d))
     xs = convert(Array{Float32, 3}, reshape(rand(ρ₀, N*num_samples), d, N, num_samples))
 
     # positions of moving trap
