@@ -2,3 +2,12 @@ name = "amath"
 uuid = "6df99919-57d4-41fb-9972-d7e5608b966c"
 authors = ["Vasily Ilin <vasilin97@gmail.com>"]
 version = "0.1.0"
+
+[deps]
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+Flux = "587475ba-b771-5e3f-ad9e-33799f191a9c"
+JLD = "4138dd39-2aa7-5051-a626-17a0bb65d9c8"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"

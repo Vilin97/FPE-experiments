@@ -44,24 +44,26 @@ D   : Rᵈ → Rᵈˣᵈ
 n   : number of particles
 s   : NN to approximate score ∇log ρ
 """
-function sbtm(xs, Δts, b, D, s; kwargs...)
-    trajectories = zeros(eltype(xs), size(xs)..., 1+length(Δts)) # trajectories[:, i, j, k] is particle i of sample j at time k
+function sbtm(xs :: Array{T, 3}, Δts, b, D, s; kwargs...) where T
+    trajectories = zeros(T, size(xs)..., 1+length(Δts)) # trajectories[:, i, j, k] is particle i of sample j at time k
     trajectories[:, :, :, 1] = xs
-    losses = sbtm!(trajectories, Δts, b, D, s; kwargs...)
-    trajectories, losses
+    s_values = zeros(T, size(xs)..., 1+length(Δts))
+    s_values[:, :, :, 1] = s(xs)
+    losses = zeros(T, epochs, length(Δts))
+    sbtm!(trajectories, losses, s_values, Δts, b, D, s; kwargs...)
+    trajectories, losses, s_values
 end
 
-function sbtm!(trajectories :: Array{T, 4}, Δts, b, D, s; verbose = true, kwargs...) where T
+function sbtm!(trajectories :: Array{T, 4}, losses, s_values, Δts, b, D, s; verbose = true, record_s_values = true, kwargs...) where T
     t = zero(eltype(Δts))
-    losses = zeros(T, epochs, length(Δts))
     for (k, Δt) in enumerate(Δts)
         verbose && @show k
         xs_k = @view trajectories[:, :, :, k]
         custom_train!(s, (@view losses[:, k]), xs_k; verbose = verbose, kwargs...)
+        record_s_values && (s_values[:, :, :, k] = s(xs_k))
         trajectories[:, :, :, k+1] = propagate(xs_k, t, Δt, b, D, s)
         t += Δt
     end
-    losses
 end
 
 function initialize_s(ρ₀, xs, size_hidden, num_hidden; activation = relu, verbose = true, kwargs...)
