@@ -8,16 +8,6 @@ using Flux: params, train!
 using Statistics: mean
 using Flux.OneHotArrays: onehot
 
-function divergence1(f, v)
-    _, ∂f = pullback(f, v)
-    id = I(length(v)) |> gpu
-    sum(eachindex(v)) do i
-        ∂f( @view id[i,:] )[1][i]
-    end
-end
-
-divergence3(f,v) = sum(gradient(v -> f(v)[i], v)[1][i] for i in eachindex(v))
-
 # divergence of vector field s at x
 function divergence(f, v)
     _, ∂f = pullback(f, v)
