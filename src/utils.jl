@@ -1,6 +1,6 @@
 using Plots
 
-function moving_trap(N = 5, num_samples = 2, num_timestamps = 20)
+function moving_trap(N = 25, num_samples = 50, num_timestamps = 100)
     d = 2 # dimension of each particle
     a = Float32(2.) # trap amplitude
     w = Float32(1.) # trap frequency
@@ -14,7 +14,7 @@ function moving_trap(N = 5, num_samples = 2, num_timestamps = 20)
         repel = α * (x .- mean(x, dims = 2))
         attract + repel
     end
-    D(x, t) = Float32(0.)
+    D(x, t) = Float32(0.25)
     
     # draw samples
     ρ₀ = MvNormal(zeros(d), 0.25*I(d))
