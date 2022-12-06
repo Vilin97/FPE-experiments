@@ -8,6 +8,13 @@ using Flux: params, train!
 using Statistics: mean
 using Flux.OneHotArrays: onehot
 
+# approximate divergence of f at v
+function denoise(s, xs :: AbstractArray{T, 3}, α = T(0.1)) where T
+    d = length(xs)
+    ζ = reshape(rand(MvNormal(zeros(T, d), I(d))), size(xs))
+    return ( sum(s(xs .+ α .* ζ) .* ζ) - sum(s(xs .- α .* ζ) .* ζ) ) ./ (T(2.)*α)
+end
+
 # divergence of vector field s at x
 function divergence(f, v)
     _, ∂f = pullback(f, v)
@@ -16,7 +23,7 @@ function divergence(f, v)
         sum(x -> x[i], ∂fᵢ)
     end
 end
-loss(s, xs :: AbstractArray{T, 3}) where T =  (sum(x -> x^2, s(xs)) + T(2.0)*divergence(s, xs))/size(xs, 3)
+loss(s, xs :: AbstractArray{T, 3}) where T =  (sum(x -> x^2, s(xs)) + T(2.0)*denoise(s, xs))/size(xs, 3)
 
 score(ρ, x) = convert(eltype(x), sum(logpdf(ρ, x)))
 propagate(x, t, Δt, b, D, s) = x + Δt * (b(x, t) + D(x, t)*s(x))
