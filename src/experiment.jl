@@ -17,11 +17,11 @@ t2 = time()
 
 println("Done with jhu. Took $(t2-t1) seconds.")
 
-s = initialize_s(ρ₀, xs, 32, 1)
-epochs = 10
+s = initialize_s(ρ₀, xs, 32, 2)
+epochs = 25
 t3 = time()
 println("Done with NN initialization. Took $(t3-t2) seconds.")
-sbtm_trajectories, losses, s_values = sbtm(xs, Δts, b, D, s; optimiser = Adam(10^-3), epochs = epochs, record_losses = true, verbose = 0)
+sbtm_trajectories, losses, s_values = sbtm(xs, Δts, b, D, s; epochs = epochs, record_losses = true, verbose = 0)
 t4 = time()
 # animation = animate_2d(trajectories, "sbtm", Δts, samples = 2, fps = 10, target = target)
 # loss_plot = plot_losses(losses, epochs)
