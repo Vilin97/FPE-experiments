@@ -85,14 +85,15 @@ function initialize_s(ρ₀, xs, size_hidden, num_hidden; activation = relu, ver
     return s
 end
 
-function initialize_s!(s, ρ₀, xs; optimiser = Adam(10^-4), ε = 10^-4)
+function initialize_s!(s, ρ₀, xs :: AbstractArray{T, 3}; optimiser = Adam(10^-4), ε = T(10^-4)) where T
     ys = gradient(x -> score(ρ₀, x), xs)[1]
     ys_sum_squares = sum(ys.^2)
     square_error(s) = sum( (s(xs) - ys).^2 / ys_sum_squares )
     epoch = 0
     θ = params(s)
-    while square_error(s) > ε
-        grads = gradient(() -> square_error(s), θ)
+    loss_value = ε + one(T)
+    while loss_value > ε
+        loss_value, grads = withgradient(() -> square_error(s), θ)
         Flux.update!(optimiser, θ, grads)
         epoch += 1
     end

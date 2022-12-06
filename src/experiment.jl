@@ -6,7 +6,7 @@ include("jhu.jl")
 
 # first example from paper
 t0 = time()
-xs, Δts, b, D, ρ₀, target = moving_trap(25, 50, 100)
+xs, Δts, b, D, ρ₀, target = moving_trap(50, 100, 200)
 
 ε = 1.
 t1 = time()
@@ -21,7 +21,7 @@ s = initialize_s(ρ₀, xs, 32, 1)
 epochs = 10
 t3 = time()
 println("Done with NN initialization. Took $(t3-t2) seconds.")
-sbtm_trajectories, losses, s_values = sbtm(xs, Δts, b, D, s; optimiser = Adam(10^-3), epochs = epochs, record_losses = true, verbose = 1)
+sbtm_trajectories, losses, s_values = sbtm(xs, Δts, b, D, s; optimiser = Adam(10^-3), epochs = epochs, record_losses = true, verbose = 0)
 t4 = time()
 # animation = animate_2d(trajectories, "sbtm", Δts, samples = 2, fps = 10, target = target)
 # loss_plot = plot_losses(losses, epochs)
