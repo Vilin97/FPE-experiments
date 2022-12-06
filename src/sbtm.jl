@@ -27,7 +27,7 @@ function plot_losses(losses)
     scatter!(p, 1:epochs:length(vec(losses)), vec(losses)[1:epochs:end], label = "discrete time propagation", marker = true)
 end
 
-function custom_train!(s, losses, xs; optimiser = Adam(5. * 10^-3), epochs = 25, record_losses = true, verbose = 1)
+function custom_train!(s, losses, xs; optimiser = Adam(10^-4), epochs = 25, record_losses = true, verbose = 1)
     θ = params(s)
     for epoch in 1:epochs
         loss_value, grads = withgradient(() -> loss(s, xs), θ)
