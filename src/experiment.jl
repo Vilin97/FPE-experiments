@@ -6,7 +6,7 @@ include("jhu.jl")
 
 # first example from paper
 t0 = time()
-xs, Δts, b, D, ρ₀, target = moving_trap(50, 100, 200)
+xs, Δts, b, D, ρ₀, target, β = moving_trap(50, 100, 200)
 
 ε = 1.
 t1 = time()

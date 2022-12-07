@@ -17,13 +17,13 @@ function moving_trap(N = 25, num_samples = 50, num_timestamps = 100)
     D(x, t) = Float32(0.25)
     
     # draw samples
-    ρ₀ = MvNormal(zeros(d), 0.25*I(d))
+    ρ₀ = MvNormal(β(0.), 0.25*I(d))
     xs = convert(Array{Float32, 3}, reshape(rand(ρ₀, N*num_samples), d, N, num_samples))
 
     # positions of moving trap
     target = hcat(β.(vcat(0., cumsum(Δts)))...)
 
-    xs, Δts, b, D, ρ₀, target
+    xs, Δts, b, D, ρ₀, target, β
 end
 
 function attractive_origin()
