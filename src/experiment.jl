@@ -37,9 +37,7 @@ function moving_trap_experiment()
         "losses", losses, 
         "s_values", s_values, 
         "jhu_trajectories", jhu_trajectories,
-
-        "initial_parameters", (xs, Δts, b, D, ρ₀, target, a, w, α, β),
-        "timestamps", [t0, t1, t2, t3, t4])
+        "initial_parameters", (xs, Δts, b, D, ρ₀, target, a, w, α, β))
 
     println("Done with saving")
 end

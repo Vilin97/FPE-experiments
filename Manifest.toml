@@ -576,12 +576,6 @@ git-tree-sha1 = "a3f24677c21f5bbe9d2a714f95dcd58337fb2856"
 uuid = "82899510-4779-5014-852e-03e436cf321d"
 version = "1.0.0"
 
-[[deps.JLD]]
-deps = ["Compat", "FileIO", "H5Zblosc", "HDF5", "Printf"]
-git-tree-sha1 = "ec6afa4fd3402e4dd5b15b3e5dd2f7dd52043ce8"
-uuid = "4138dd39-2aa7-5051-a626-17a0bb65d9c8"
-version = "0.13.3"
-
 [[deps.JLD2]]
 deps = ["FileIO", "MacroTools", "Mmap", "OrderedCollections", "Pkg", "Printf", "Reexport", "TranscodingStreams", "UUIDs"]
 git-tree-sha1 = "ec8a9c9f0ecb1c687e34c1fda2699de4d054672a"
