@@ -1,5 +1,4 @@
-using Distributions, Zygote, LinearAlgebra
-using Distributions: pdf, MvNormal
+using Zygote
 
 include("utils.jl")
 
@@ -25,7 +24,7 @@ function jhu!(trajectories, Δts, b, D, ε)
     for (k, Δt) in enumerate(Δts)
         xs_k = @view trajectories[:, :, :, k]
         for (j, x) in enumerate(eachslice(xs_k, dims = 3))
-            trajectories[:, :, j, k+1] = propagate(ε, x, xs, t, Δt, b, D)
+            trajectories[:, :, j, k+1] = propagate(ε, x, xs_k, t, Δt, b, D)
         end
         t += Δt
     end

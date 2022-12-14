@@ -1,11 +1,11 @@
 using Plots
 
-function moving_trap(N = 50, num_samples = 100, num_timestamps = 200)
+function moving_trap(N, num_samples, num_timestamps)
     d = 2 # dimension of each particle
     a = Float32(2.) # trap amplitude
     w = Float32(1.) # trap frequency
     α = Float32(.5) # repelling force
-    Δts = 0.01*ones(Float32, num_timestamps) # time increments
+    Δts = Float32(0.01)*ones(Float32, num_timestamps) # time increments
       
     # define drift vector field b and diffusion matrix D
     β(t) = a*Float32[cos(π*w*t), sin(π*w*t)]
@@ -14,16 +14,16 @@ function moving_trap(N = 50, num_samples = 100, num_timestamps = 200)
         repel = α * (x .- mean(x, dims = 2))
         attract + repel
     end
-    D(x, t) = Float32(0.25)
+    D(x, t :: T) where T = T(0.25)
     
     # draw samples
-    ρ₀ = MvNormal(zeros(d), 0.25*I(d))
+    ρ₀ = MvNormal(β(0.), 0.25f0*I(d))
     xs = convert(Array{Float32, 3}, reshape(rand(ρ₀, N*num_samples), d, N, num_samples))
 
     # positions of moving trap
     target = hcat(β.(vcat(0., cumsum(Δts)))...)
 
-    xs, Δts, b, D, ρ₀, target
+    xs, Δts, b, D, ρ₀, target, a, w, α, β
 end
 
 function attractive_origin()
