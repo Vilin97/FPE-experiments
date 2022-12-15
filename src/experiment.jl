@@ -37,7 +37,7 @@ function moving_trap_experiment()
         "losses", losses, 
         "s_values", s_values, 
         "jhu_trajectories", jhu_trajectories,
-        "initial_parameters", (xs, Δts, b, D, ρ₀, target, a, w, α, β))
+        "seed", seed)
 
     println("Done with saving")
 end
