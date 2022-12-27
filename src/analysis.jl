@@ -9,11 +9,13 @@ sbtm_trajectories = data["sbtm_trajectories"]
 losses = data["losses"] 
 s_values = data["s_values"] 
 jhu_trajectories = data["jhu_trajectories"] 
+@assert size(sbtm_trajectories) == size(jhu_trajectories)
 
 # reconstruct the initial parameters
 seed!(data["seed"])
 d_bar, N, num_samples, num_timestamps = size(sbtm_trajectories)
 xs, Δts, b, D, ρ₀, target, a, w, α, β = moving_trap(N, num_samples, num_timestamps-1)
+ts = vcat(0f0, cumsum(Δts))
 
 # solve analytically
 tspan = (0f0, sum(Δts))
@@ -25,7 +27,7 @@ function f!(dcov, cov, p, t :: T) where T
     dcov.Cd = T(2)*(α-one(T))*cov.Cd - T(2)*α/N*(cov.Cd + (N-1)*cov.Co) + T(2)*D(t)*I
     dcov.Co = T(2)*(α-one(T))*cov.Co - T(2)*α/N*(cov.Cd + (N-1)*cov.Co)
 end
-analytic_solution = solve(ODEProblem(f!, initial, tspan, p), saveat = vcat(0f0, cumsum(Δts)))
+analytic_solution = solve(ODEProblem(f!, initial, tspan, p), saveat = ts)
 ρ(t) = MvNormal(kron(ones(N), analytic_solution(t).m), kron((analytic_solution(t).Cd - analytic_solution(t).Co), I(N)) + kron(analytic_solution(t).Co, ones(Float32, N, N)))
 
 function analytic_score(analytic_solution, time_index, x)
@@ -40,9 +42,18 @@ function analytic_score(analytic_solution, time_index, x)
 end
 
 # empirical statistics
-empirical_first_moment(flat_xs :: AbstractArray{T, 2}) where T = mean(flat_xs, dims = 2)
+empirical_first_moment(flat_xs :: AbstractArray{T, 2}) where T = vec(mean(flat_xs, dims = 2))
 empirical_second_moment(flat_xs :: AbstractArray{T, 2}) where T = flat_xs * flat_xs' / (size(flat_xs, 2) - 1)
 empirical_covariance(flat_xs :: AbstractArray{T, 2}) where T = empirical_second_moment(flat_xs .- empirical_first_moment(flat_xs))
+
+function moment_analysis(trajectories)
+    flat_trajectories = reshape(trajectories, d_bar*N, num_samples, num_timestamps)
+    expectations = [empirical_first_moment(flat_xs) for flat_xs in eachslice(flat_trajectories, dims=3)]
+    analytic_expectations = [mean(ρ(t)) for t in ts]
+    expectation_errors = [norm(expectation - analytic_expectation) for (expectation, analytic_expectation) in zip(expectations, analytic_expectations)]
+end
+sbtm_expectation_errors = moment_analysis(sbtm_trajectories)
+jhu_expectation_errors = moment_analysis(jhu_trajectories)
 
 #TODO: compare empirical and analytic covariances for both methods
 #TODO: add contour plots for the analytic probability dist to the animation
