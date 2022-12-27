@@ -2,23 +2,21 @@
 
 using Flux, LinearAlgebra, Plots
 using Distributions: MvNormal, logpdf
-using Zygote: gradient, pullback, withgradient
+using Zygote: gradient, withgradient
 using Flux.Optimise: Adam
 using Flux: params
-using Statistics: mean
-using Flux.OneHotArrays: onehot
 
 # approximate divergence of f at v
 function denoise(s, xs :: AbstractArray{T, 3}, α = T(0.1)) where T
     d = length(xs)
     ζ = reshape(rand(MvNormal(zeros(T, d), I(d))), size(xs))
-    return ( sum(s(xs .+ α .* ζ) .* ζ) - sum(s(xs .- α .* ζ) .* ζ) ) / (T(2.)*α)
+    return ( sum(apply_s(s, xs .+ α .* ζ) .* ζ) - sum(apply_s(s, xs .- α .* ζ) .* ζ) ) / (T(2.)*α)
 end
 
-loss(s, xs :: AbstractArray{T, 3}) where T =  (sum(x -> x^2, s(xs)) + T(2.0)*denoise(s, xs))/size(xs, 3)
+loss(s, xs :: AbstractArray{T, 3}) where T =  (sum(x -> x^2, apply_s(s, xs)) + T(2.0)*denoise(s, xs))/size(xs, 3)
 
 score(ρ, x) = convert(eltype(x), sum(logpdf(ρ, x)))
-propagate(x, t, Δt, b, D, s) = x + Δt * (b(x, t) - D(x, t)*s(x))
+propagate(x, t, Δt, b, D, s) = x + Δt * (b(x, t) - D(x, t)*apply_s(s, x))
 
 function plot_losses(losses)
     epochs = size(losses, 1)
@@ -48,7 +46,7 @@ function sbtm(xs :: Array{T, 3}, Δts, b, D, s; epochs = 25, kwargs...) where T
     trajectories = zeros(T, size(xs)..., 1+length(Δts)) # trajectories[:, i, j, k] is particle i of sample j at time k
     trajectories[:, :, :, 1] = xs
     s_values = zeros(T, size(xs)..., 1+length(Δts))
-    s_values[:, :, :, 1] = s(xs)
+    s_values[:, :, :, 1] = apply_s(s, xs)
     losses = zeros(T, epochs, length(Δts))
     sbtm!(trajectories, losses, s_values, Δts, b, D, s; epochs = epochs, kwargs...)
     trajectories, losses, s_values
@@ -60,27 +58,38 @@ function sbtm!(trajectories :: Array{T, 4}, losses, s_values, Δts, b, D, s; epo
         verbose > 0 && println("Time $t")
         xs_k = @view trajectories[:, :, :, k]
         custom_train!(s, (@view losses[:, k]), xs_k; epochs = epochs, verbose = verbose, kwargs...)
-        record_s_values && (s_values[:, :, :, k+1] = s(xs_k))
+        record_s_values && (s_values[:, :, :, k+1] = apply_s(s, xs_k))
         trajectories[:, :, :, k+1] = propagate(xs_k, t, Δt, b, D, s)
         t += Δt
     end
 end
 
 function initialize_s(ρ₀, xs, size_hidden, num_hidden; activation = relu, verbose = 1, kwargs...)
-    d = size(xs, 1)
-    s = Chain(
-        Dense(d => size_hidden, activation),
-        repeat([Dense(size_hidden, size_hidden), activation], num_hidden)...,
-        Dense(size_hidden => d))
+    d = size(xs, 1)*size(xs, 2)
+    if num_hidden == 0
+        s = Chain(
+        Dense(d => d))
+    else
+        s = Chain(
+            Dense(d => size_hidden, activation),
+            repeat([Dense(size_hidden, size_hidden), activation], num_hidden-1)...,
+            Dense(size_hidden => d))
+    end
     epochs = initialize_s!(s, ρ₀, xs; kwargs...)
     verbose > 0 && println("Took $epochs epochs to initialize. Initial loss: $(loss(s,xs))")
     return s
 end
 
+function apply_s(s, xs)
+    reshaped = reshape(xs, size(xs,1)*size(xs,2),size(xs,3))
+    result = s(reshaped)
+    reshape(result, size(xs))
+end
+
 function initialize_s!(s, ρ₀, xs :: AbstractArray{T, 3}; optimiser = Adam(10^-4), ε = T(10^-4)) where T
     ys = gradient(x -> score(ρ₀, x), xs)[1]
     ys_sum_squares = sum(ys.^2)
-    square_error(s) = sum( (s(xs) - ys).^2 / ys_sum_squares )
+    square_error(s) = sum( (apply_s(s, xs) - ys).^2 / ys_sum_squares )
     epoch = 0
     θ = params(s)
     loss_value = ε + one(T)

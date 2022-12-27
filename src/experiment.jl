@@ -7,10 +7,11 @@ include("jhu.jl")
 
 # first example from paper
 function moving_trap_experiment()
-    seed = 1234
+    d_bar, N, n = 5, 10, 20
+    seed = d_bar*N*n
     seed!(seed)
     t0 = time()
-    xs, Δts, b, D, ρ₀, target, a, w, α, β = moving_trap(50, 100, 200)
+    xs, Δts, b, D, ρ₀, target, a, w, α, β = moving_trap(d_bar, N, n)
 
     ε = Float32(1/π)
     t1 = time()

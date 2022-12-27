@@ -1,4 +1,4 @@
-using Plots
+using Plots, Statistics
 
 function moving_trap(N, num_samples, num_timestamps)
     d = 2 # dimension of each particle
