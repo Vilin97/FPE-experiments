@@ -1,5 +1,9 @@
 using Plots, Statistics
 
+# mollifier ϕ_ε
+mol(ε, x) = exp(-sum(x.^2)/ε)/sqrt((π*ε)^length(x)) # = pdf(Normal(0,√(ε/2)), x)
+Mol(ε, x, xs) = sum( mol(ε, x - x_q) for x_q in eachslice(xs, dims=length(size(xs))) )
+
 function moving_trap(N, num_samples, num_timestamps)
     d = 2 # dimension of each particle
     a = Float32(2.) # trap amplitude

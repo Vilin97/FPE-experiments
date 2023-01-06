@@ -18,7 +18,7 @@ d_bar, N, num_samples, num_timestamps = size(sbtm_trajectories)
 xs, Δts, b, D, ρ₀, target, a, w, α, β = moving_trap(N, num_samples, num_timestamps-1)
 ts = vcat(0f0, cumsum(Δts))
 
-# solve analytically
+# solve analyticly
 tspan = (0f0, sum(Δts))
 p = (α, size(xs, 2), t -> D(xs, t), β) # assumes D is constant in space
 initial = ComponentVector(m = mean(ρ₀), Cd = cov(ρ₀), Co = zeros(eltype(xs), 2, 2))
@@ -42,6 +42,16 @@ function analytic_score(analytic_solution, time_index, x)
     return σ² .* (x .- m)
 end
 
+function analytic_entropy(t)
+    d, = size(ρ(t))
+    return d/2*(log(2*π) + 1) + 1/2*log(det(cov(ρ(t))))
+end
+
+function empirical_entropy(flat_xs :: AbstractArray{T, 2}, ε) where T
+    d, n = size(flat_xs)
+    return -sum( log(Mol(ε, x, flat_xs)) for x in eachslice(flat_xs, dims=2) )/n + log(n)
+end
+
 # empirical statistics
 empirical_first_moment(flat_xs :: AbstractArray{T, 2}) where T = vec(mean(flat_xs, dims = 2))
 empirical_second_moment(flat_xs :: AbstractArray{T, 2}) where T = flat_xs * flat_xs' / (size(flat_xs, 2) - 1)
@@ -58,29 +68,41 @@ function moment_analysis(trajectories)
     expectations, analytic_expectations, expectation_errors, covariances, analytic_covariances, covariance_errors
 end
 
+function entropy_analysis(trajectories, ε = 1.24)
+    flat_trajectories = reshape(trajectories, d_bar*N, num_samples, num_timestamps)
+    entropies = [empirical_entropy(flat_xs, ε) for flat_xs in eachslice(flat_trajectories, dims=3)]
+    analytic_entropies = [analytic_entropy(t) for t in ts]
+    entropies, analytic_entropies
+end
+
 function make_plots()
+    println("Making plots")
     sbtm_expectations, analytic_expectations, sbtm_expectation_errors, sbtm_covariances, analytic_covariances, sbtm_covariance_errors  = moment_analysis(sbtm_trajectories)
-    jhu_expectations, _, jhu_expectation_errors, jhu_covariances, _, jhu_covariance_errors = moment_analysis(jhu_trajectories)
+    jhu_expectations, _, jhu_expectation_errors, jhu_covariances, analytic_covariances, jhu_covariance_errors = moment_analysis(jhu_trajectories)
+    sbtm_entropies, analytic_entropies = entropy_analysis(sbtm_trajectories)
+    jhu_entropies, _ = entropy_analysis(jhu_trajectories)
 
-    p1 = plot(ts, sbtm_expectation_errors, label = "sbtm expectation errors")
-    plot!(p1, ts, jhu_expectation_errors, label = "jhu expectation errors")
-    p2 = plot(ts, sbtm_covariance_errors, label = "sbtm covariance errors")
-    plot!(p2, ts, jhu_covariance_errors, label = "jhu covariance errors")
-    # p1 = plot(ts, analytic_expectations, label = "analytic expectations")
-    # plot!(p1, ts, sbtm_expectations, label = "sbtm expectations")
-    # plot!(p1, ts, jhu_expectations, label = "jhu expectations")
+    p1 = plot(title = "expectation comparison", xlabel = "physical time", ylabel = "2-norm of mean position")
+    plot!(p1, ts, norm.(analytic_expectations), label = "analytic expectation norms")
+    plot!(p1, ts, norm.(sbtm_expectations), label = "sbtm expectation norms")
+    plot!(p1, ts, norm.(jhu_expectations), label = "jhu expectation norms")
 
-    # p2 = plot(ts, jhu_expectation_errors, label = "expectation errors")
-    # p2 = plot!(ts, analytic_covariances, label = "analytic covariances")
-    # plot!(p2, ts, sbtm_covariances, label = "sbtm covariances")
-    # plot!(p2, ts, jhu_covariances, label = "jhu covariances")
-    println("Combining plots")
-    plot(p1, p2)
+    p2 = plot(title = "covariance comparison", xlabel = "physical time", ylabel = "covariance trace")
+    plot!(p2, ts, tr.(analytic_covariances), label = "analytic covariance traces")
+    plot!(p2, ts, tr.(sbtm_covariances), label = "sbtm covariance traces")
+    plot!(p2, ts, tr.(jhu_covariances), label = "jhu covariance traces")
+    
+    p3 = plot(title = "entropy comparison", xlabel = "physical time", ylabel = "entropy")
+    plot!(p3, ts, analytic_entropies, label = "analytic entropy")
+    plot!(p3, ts, sbtm_entropies, label = "sbtm entropy")
+    plot!(p3, ts, jhu_entropies, label = "jhu entropy")
+    
+    p1, p2, p3
 end
 
 plotly()
-println("Making plots")
-make_plots()
+
+# make_plots()
 
 #TODO: compare empirical and analytic covariances for both methods
 #TODO: add contour plots for the analytic probability dist to the animation
