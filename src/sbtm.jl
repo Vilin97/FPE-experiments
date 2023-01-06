@@ -64,7 +64,8 @@ function sbtm!(trajectories :: Array{T, 4}, losses, s_values, Δts, b, D, s; epo
     end
 end
 
-function initialize_s!(s, ρ₀, xs :: AbstractArray{T, 3}; optimiser = Adam(10^-4), ε = T(10^-4)) where T
+function initialize_s!(s, ρ₀, xs :: AbstractArray{T, 3}; optimiser = Adam(10^-4), ε = T(10^-4), verbose = 1) where T
+    verbose > 1 && println("Initializing NN \n$s")
     ys = gradient(x -> score(ρ₀, x), xs)[1]
     ys_sum_squares = sum(ys.^2)
     square_error(s) = sum( (s(xs) - ys).^2 / ys_sum_squares )
@@ -75,6 +76,7 @@ function initialize_s!(s, ρ₀, xs :: AbstractArray{T, 3}; optimiser = Adam(10^
         loss_value, grads = withgradient(() -> square_error(s), θ)
         Flux.update!(optimiser, θ, grads)
         epoch += 1
+        verbose > 1 && epoch % 1000 == 0 && println("Epoch $epoch, loss $loss_value")
     end
     epoch
 end

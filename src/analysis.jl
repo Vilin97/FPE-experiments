@@ -1,9 +1,10 @@
 # analyze the trajectories from the first example in the paper
 
-using DifferentialEquations, JLD2, Distributions, ComponentArrays, LinearAlgebra
+using DifferentialEquations, JLD2, Distributions, ComponentArrays, LinearAlgebra, Plots
 using Random: seed!
 include("utils.jl")
 
+println("Loading data")
 data = JLD2.load("moving_trap_data_1234.jld2")
 sbtm_trajectories = data["sbtm_trajectories"]  
 losses = data["losses"] 
@@ -49,11 +50,37 @@ empirical_covariance(flat_xs :: AbstractArray{T, 2}) where T = empirical_second_
 function moment_analysis(trajectories)
     flat_trajectories = reshape(trajectories, d_bar*N, num_samples, num_timestamps)
     expectations = [empirical_first_moment(flat_xs) for flat_xs in eachslice(flat_trajectories, dims=3)]
+    covariances = [empirical_covariance(flat_xs) for flat_xs in eachslice(flat_trajectories, dims=3)]
     analytic_expectations = [mean(ρ(t)) for t in ts]
+    analytic_covariances = [cov(ρ(t)) for t in ts]
     expectation_errors = [norm(expectation - analytic_expectation) for (expectation, analytic_expectation) in zip(expectations, analytic_expectations)]
+    covariance_errors = [tr(cov - analytic_cov) for (cov, analytic_cov) in zip(covariances, analytic_covariances)]
+    expectations, analytic_expectations, expectation_errors, covariances, analytic_covariances, covariance_errors
 end
-sbtm_expectation_errors = moment_analysis(sbtm_trajectories)
-jhu_expectation_errors = moment_analysis(jhu_trajectories)
+
+function make_plots()
+    sbtm_expectations, analytic_expectations, sbtm_expectation_errors, sbtm_covariances, analytic_covariances, sbtm_covariance_errors  = moment_analysis(sbtm_trajectories)
+    jhu_expectations, _, jhu_expectation_errors, jhu_covariances, _, jhu_covariance_errors = moment_analysis(jhu_trajectories)
+
+    p1 = plot(ts, sbtm_expectation_errors, label = "sbtm expectation errors")
+    plot!(p1, ts, jhu_expectation_errors, label = "jhu expectation errors")
+    p2 = plot(ts, sbtm_covariance_errors, label = "sbtm covariance errors")
+    plot!(p2, ts, jhu_covariance_errors, label = "jhu covariance errors")
+    # p1 = plot(ts, analytic_expectations, label = "analytic expectations")
+    # plot!(p1, ts, sbtm_expectations, label = "sbtm expectations")
+    # plot!(p1, ts, jhu_expectations, label = "jhu expectations")
+
+    # p2 = plot(ts, jhu_expectation_errors, label = "expectation errors")
+    # p2 = plot!(ts, analytic_covariances, label = "analytic covariances")
+    # plot!(p2, ts, sbtm_covariances, label = "sbtm covariances")
+    # plot!(p2, ts, jhu_covariances, label = "jhu covariances")
+    println("Combining plots")
+    plot(p1, p2)
+end
+
+plotly()
+println("Making plots")
+make_plots()
 
 #TODO: compare empirical and analytic covariances for both methods
 #TODO: add contour plots for the analytic probability dist to the animation

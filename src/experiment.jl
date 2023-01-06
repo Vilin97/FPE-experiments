@@ -7,27 +7,22 @@ include("jhu.jl")
 
 # first example from paper
 
-function potential(xs, u1, u2)
-    d_bar, N, n = size(xs)
-    term1 = reshape(sum(u1(xs), dims = 2), n) # first term of the potential in eqn (13)
-    # TODO write the second term
-end
-
 function initialize_s(ρ₀, xs, size_hidden, num_hidden; activation = relu, verbose = 1, kwargs...)
     d_bar, N, n = size(xs)
+    d = d_bar*N
     s = Chain(
-        xs -> reshape(xs, d_bar*N,n)
+        xs -> reshape(xs, d, n),
         Dense(d => size_hidden, activation),
         repeat([Dense(size_hidden, size_hidden), activation], num_hidden-1)...,
         Dense(size_hidden => d),
         xs -> reshape(xs, d_bar, N, n))
-    epochs = initialize_s!(s, ρ₀, xs; kwargs...)
+    epochs = initialize_s!(s, ρ₀, xs; verbose = verbose, kwargs...)
     verbose > 0 && println("Took $epochs epochs to initialize. Initial loss: $(loss(s,xs))")
     return s
 end
 
 function moving_trap_experiment()
-    d_bar, N, n = 5, 10, 20
+    d_bar, N, n = 50, 10, 200
     seed = d_bar*N*n
     seed!(seed)
     t0 = time()
@@ -42,7 +37,7 @@ function moving_trap_experiment()
 
     println("Done with jhu. Took $(t2-t1) seconds.")
 
-    s = initialize_s(ρ₀, xs, 100, 1)
+    s = initialize_s(ρ₀, xs, 100, 1, verbose = 2)
     epochs = 25
     t3 = time()
     println("Done with NN initialization. Took $(t3-t2) seconds.")
