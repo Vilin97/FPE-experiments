@@ -22,11 +22,11 @@ function initialize_s(ρ₀, xs, size_hidden, num_hidden; activation = relu, ver
 end
 
 function moving_trap_experiment()
-    d_bar, N, n = 50, 10, 200
-    seed = d_bar*N*n
+    N, num_samples, num_timestamps = 50, 100, 200
+    seed = N*num_samples*num_timestamps
     seed!(seed)
     t0 = time()
-    xs, Δts, b, D, ρ₀, target, a, w, α, β = moving_trap(d_bar, N, n)
+    xs, Δts, b, D, ρ₀, target, a, w, α, β = moving_trap(N, num_samples, num_timestamps)
 
     ε = Float32(1/π)
     t1 = time()
