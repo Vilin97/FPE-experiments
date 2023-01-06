@@ -2,7 +2,7 @@ using Zygote
 
 include("utils.jl")
 
-function propagate(ε :: Number, x, xs, t, Δt, b, D)
+function propagate(ε :: Number, x, xs, t, Δt, b, D) # O(size(xs, 3)^2)
     d1 = gradient(x -> Mol(ε, x, xs), x)[1]/Mol(ε, x, xs)
     d2 = sum( gradient(x -> mol(ε, x - x_q), x)[1]/Mol(ε, x_q, xs) for x_q in eachslice(xs, dims=3) )
     x + Δt * (b(x, t) - D(x,t) * (d1 + d2))
