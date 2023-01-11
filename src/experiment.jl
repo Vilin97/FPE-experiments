@@ -12,9 +12,9 @@ function initialize_s(ρ₀, xs, size_hidden, num_hidden; activation = relu, ver
     d = d_bar*N
     s = Chain(
         # xs -> reshape(xs, d, n),
-        Dense(d => size_hidden, activation),
+        Dense(d_bar => size_hidden, activation),
         repeat([Dense(size_hidden, size_hidden), activation], num_hidden-1)...,
-        Dense(size_hidden => d)
+        Dense(size_hidden => d_bar)
         # xs -> reshape(xs, d_bar, N, n)
         )
     epochs = initialize_s!(s, ρ₀, xs; verbose = verbose, kwargs...)
@@ -38,7 +38,7 @@ function moving_trap_experiment()
 
     println("Done with jhu. Took $(t2-t1) seconds.")
 
-    s = initialize_s(ρ₀, xs, 100, 1, verbose = 2)
+    s = initialize_s(ρ₀, xs, 100, 1, verbose = 1)
     epochs = 25
     t3 = time()
     println("Done with NN initialization. Took $(t3-t2) seconds.")

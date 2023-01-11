@@ -47,9 +47,21 @@ function analytic_entropy(t)
     return d/2*(log(2*π) + 1) + 1/2*log(det(cov(ρ(t))))
 end
 
-function empirical_entropy(flat_xs :: AbstractArray{T, 2}, ε) where T
+function empirical_entropy(ε, flat_xs :: AbstractArray{T, 2}) where T
     d, n = size(flat_xs)
-    return -sum( log(Mol(ε, x, flat_xs)) for x in eachslice(flat_xs, dims=2) )/n + log(n)
+    return -sum( log(Mol(ε, x, flat_xs)/n) for x in eachslice(flat_xs, dims=2) )/n
+end
+
+"empirical marginal pdf at point x ∈ R²"
+function empirical_marginal(ε, x, xs :: AbstractArray{T, 3}) where T
+    Mol(ε, x, xs[:,1,:])/size(xs, 3)
+end
+
+"analytic marginal pdf at point x ∈ R²"
+function analytic_marginal(x, t)
+    d_bar = length(x)
+    sol = ρ(t)
+    pdf(MvNormal(mean(sol)[1:d_bar], cov(sol)[1:d_bar, 1:d_bar]), x)
 end
 
 # empirical statistics
@@ -68,42 +80,59 @@ function moment_analysis(trajectories)
     expectations, analytic_expectations, expectation_errors, covariances, analytic_covariances, covariance_errors
 end
 
-function entropy_analysis(trajectories, ε = 1.24)
+function entropy_analysis(trajectories, ε)
     flat_trajectories = reshape(trajectories, d_bar*N, num_samples, num_timestamps)
-    entropies = [empirical_entropy(flat_xs, ε) for flat_xs in eachslice(flat_trajectories, dims=3)]
+    entropies = [empirical_entropy(ε, flat_xs) for flat_xs in eachslice(flat_trajectories, dims=3)]
     analytic_entropies = [analytic_entropy(t) for t in ts]
     entropies, analytic_entropies
 end
 
-function make_plots()
+function make_plots(ε_entropy = 1.24, ε_marginal = 0.15)
     println("Making plots")
     sbtm_expectations, analytic_expectations, sbtm_expectation_errors, sbtm_covariances, analytic_covariances, sbtm_covariance_errors  = moment_analysis(sbtm_trajectories)
     jhu_expectations, _, jhu_expectation_errors, jhu_covariances, analytic_covariances, jhu_covariance_errors = moment_analysis(jhu_trajectories)
-    sbtm_entropies, analytic_entropies = entropy_analysis(sbtm_trajectories)
-    jhu_entropies, _ = entropy_analysis(jhu_trajectories)
+    sbtm_entropies, analytic_entropies = entropy_analysis(sbtm_trajectories, ε_entropy)
+    jhu_entropies, _ = entropy_analysis(jhu_trajectories, ε_entropy)
+    # Can set ε_entropy to match the initial entropy of the analytic solution
 
-    p1 = plot(title = "expectation comparison", xlabel = "physical time", ylabel = "2-norm of mean position")
-    plot!(p1, ts, norm.(analytic_expectations), label = "analytic expectation norms")
-    plot!(p1, ts, norm.(sbtm_expectations), label = "sbtm expectation norms")
-    plot!(p1, ts, norm.(jhu_expectations), label = "jhu expectation norms")
+    p1 = plot(title = "expectation comparison", ylabel = "mean position norm")
+    plot!(p1, ts, norm.(analytic_expectations), label = "analytic")
+    plot!(p1, ts, norm.(sbtm_expectations), label = "sbtm")
+    plot!(p1, ts, norm.(jhu_expectations), label = "jhu")
 
-    p2 = plot(title = "covariance comparison", xlabel = "physical time", ylabel = "covariance trace")
-    plot!(p2, ts, tr.(analytic_covariances), label = "analytic covariance traces")
-    plot!(p2, ts, tr.(sbtm_covariances), label = "sbtm covariance traces")
-    plot!(p2, ts, tr.(jhu_covariances), label = "jhu covariance traces")
+    p2 = plot(title = "covariance comparison", ylabel = "covariance trace")
+    plot!(p2, ts, tr.(analytic_covariances), label = nothing)
+    plot!(p2, ts, tr.(sbtm_covariances), label = nothing)
+    plot!(p2, ts, tr.(jhu_covariances), label = nothing)
     
-    p3 = plot(title = "entropy comparison", xlabel = "physical time", ylabel = "entropy")
-    plot!(p3, ts, analytic_entropies, label = "analytic entropy")
-    plot!(p3, ts, sbtm_entropies, label = "sbtm entropy")
-    plot!(p3, ts, jhu_entropies, label = "jhu entropy")
+    p3 = plot(title = "entropy comparison", ylabel = "entropy")
+    plot!(p3, ts, analytic_entropies, label = nothing)
+    plot!(p3, ts, sbtm_entropies, label = nothing)
+    plot!(p3, ts, jhu_entropies, label = nothing)
     
-    p1, p2, p3
+    # Can set ε_marginal to match the initial heatmap of the analytic solution
+    range = -3:0.1:3
+    indices = 1:50:201
+    x_grid = Iterators.product(range, range)
+    sbtm_empirical_marginals = [[empirical_marginal(ε_marginal, vcat(x...), xs) for x in x_grid] for xs in collect(eachslice(sbtm_trajectories, dims=4))[indices]]
+    jhu_empirical_marginals = [[empirical_marginal(ε_marginal, vcat(x...), xs) for x in x_grid] for xs in collect(eachslice(jhu_trajectories, dims=4))[indices]]
+    analytic_marginals = [[analytic_marginal(vcat(x...), t) for x in x_grid] for t in ts[indices]]
+    heatmaps = []
+    for (i, t) in enumerate(ts[indices])
+        p4_sbtm = heatmap(range, range, sbtm_empirical_marginals[i]', title = "sbtm marginal at t = $(round(t, digits = 2))")
+        p4_jhu = heatmap(range, range, jhu_empirical_marginals[i]', title = "jhu marginal at t = $(round(t, digits = 2))")
+        p4_analytic = heatmap(range, range, analytic_marginals[i]', title = "analytic marginal at t = $(round(t, digits = 2))")
+        append!(heatmaps, [plot(p4_sbtm, p4_jhu, p4_analytic, layout = (1, 3), size = (900, 300))])
+    end
+
+    p1, p2, p3, heatmaps
 end
 
 plotly()
 
-# make_plots()
+p1, p2, p3, heatmaps = make_plots()
+plot(p1, p2, p3, heatmaps..., layout = (3+length(heatmaps), 1), size = (900, 1200))
 
-#TODO: compare empirical and analytic covariances for both methods
-#TODO: add contour plots for the analytic probability dist to the animation
-#TODO: compute Fisher divergence between sₜ and ρₜ
+# Figuring out the best value of ε for the entropy
+# ep_range = 0.1:0.1:30.
+# plot(ep_range, [empirical_entropy(ε,flat_xs) for ε in ep_range])
