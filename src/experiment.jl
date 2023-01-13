@@ -2,7 +2,7 @@ using JLD2
 using Random: seed!
 
 include("utils.jl")
-include("sbtm.jl")
+# include("sbtm.jl")
 include("jhu.jl")
 
 # first example from paper
@@ -22,14 +22,13 @@ function initialize_s(ρ₀, xs, size_hidden, num_hidden; activation = relu, ver
     return s
 end
 
-function moving_trap_experiment()
-    N, num_samples, num_timestamps = 50, 100, 200
+function moving_trap_experiment(N=50, num_samples=100, num_timestamps=200)
     seed = N*num_samples*num_timestamps
     seed!(seed)
     t0 = time()
     xs, Δts, b, D, ρ₀, target, a, w, α, β = moving_trap(N, num_samples, num_timestamps)
 
-    ε = Float32(1.24)
+    ε = 1.24
     t1 = time()
     println("Done with initial setup. Took $(t1-t0) seconds.")
     jhu_trajectories = jhu(xs, Δts, b, D, ε)
@@ -58,4 +57,26 @@ function moving_trap_experiment()
 
     println("Done with saving")
 end
-moving_trap_experiment()
+
+function moving_trap_jhu_epsilon_experiment(N=50, num_samples=100, num_timestamps=200)
+    seed = N*num_samples*num_timestamps
+    seed!(seed)
+    xs, Δts, b, D, ρ₀, target, a, w, α, β = moving_trap(N, num_samples, num_timestamps)
+
+    epsilons = 2. .^ (-1:1:5)
+    for ε in epsilons
+        t1 = time()
+        jhu_trajectories = jhu(xs, Δts, b, D, ε)
+        t2 = time()
+        println("Done with ε=$(round(ε, digits = 2)). Took $(t2-t1) seconds.")
+
+        JLD2.save("jhu_eps_experiment//jhu_epsilon_experiment_eps_$(round(ε, digits = 2)).jld2", 
+        "jhu_trajectories", jhu_trajectories,
+        "epsilon", ε,
+        "seed", seed)
+    end
+
+    println("Done with saving")
+end
+
+moving_trap_jhu_epsilon_experiment()

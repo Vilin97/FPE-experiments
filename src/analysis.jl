@@ -95,20 +95,25 @@ function make_plots(ε_entropy = 1.24, ε_marginal = 0.15)
     jhu_entropies, _ = entropy_analysis(jhu_trajectories, ε_entropy)
     # Can set ε_entropy to match the initial entropy of the analytic solution
 
-    p1 = plot(title = "expectation comparison", ylabel = "mean position norm")
+    p1 = plot(title = "expectation comparison", ylabel = "mean position 2-norm")
     plot!(p1, ts, norm.(analytic_expectations), label = "analytic")
     plot!(p1, ts, norm.(sbtm_expectations), label = "sbtm")
     plot!(p1, ts, norm.(jhu_expectations), label = "jhu")
 
-    p2 = plot(title = "covariance comparison", ylabel = "covariance trace")
+    p2 = plot(title = "covariance trace comparison", ylabel = "covariance trace")
     plot!(p2, ts, tr.(analytic_covariances), label = nothing)
     plot!(p2, ts, tr.(sbtm_covariances), label = nothing)
     plot!(p2, ts, tr.(jhu_covariances), label = nothing)
     
-    p3 = plot(title = "entropy comparison", ylabel = "entropy")
-    plot!(p3, ts, analytic_entropies, label = nothing)
-    plot!(p3, ts, sbtm_entropies, label = nothing)
-    plot!(p3, ts, jhu_entropies, label = nothing)
+    p3 = plot(title = "covariance norm comparison", ylabel = "covariance 2-norm")
+    plot!(p3, ts, norm.(analytic_covariances), label = nothing)
+    plot!(p3, ts, norm.(sbtm_covariances), label = nothing)
+    plot!(p3, ts, norm.(jhu_covariances), label = nothing)
+
+    p4 = plot(title = "entropy comparison", ylabel = "entropy")
+    plot!(p4, ts, analytic_entropies, label = nothing)
+    plot!(p4, ts, sbtm_entropies, label = nothing)
+    plot!(p4, ts, jhu_entropies, label = nothing)
     
     # Can set ε_marginal to match the initial heatmap of the analytic solution
     range = -3:0.1:3
@@ -119,19 +124,79 @@ function make_plots(ε_entropy = 1.24, ε_marginal = 0.15)
     analytic_marginals = [[analytic_marginal(vcat(x...), t) for x in x_grid] for t in ts[indices]]
     heatmaps = []
     for (i, t) in enumerate(ts[indices])
+        p4_analytic = heatmap(range, range, analytic_marginals[i]', title = "analytic marginal at t = $(round(t, digits = 2))")
         p4_sbtm = heatmap(range, range, sbtm_empirical_marginals[i]', title = "sbtm marginal at t = $(round(t, digits = 2))")
         p4_jhu = heatmap(range, range, jhu_empirical_marginals[i]', title = "jhu marginal at t = $(round(t, digits = 2))")
-        p4_analytic = heatmap(range, range, analytic_marginals[i]', title = "analytic marginal at t = $(round(t, digits = 2))")
         append!(heatmaps, [plot(p4_sbtm, p4_jhu, p4_analytic, layout = (1, 3), size = (900, 300))])
     end
 
-    p1, p2, p3, heatmaps
+    p1, p2, p3, p4, heatmaps, plot(p1, p2, p3, p4, heatmaps..., layout = (4+length(heatmaps), 1), size = (1000, 1500))
+end
+
+function make_plots_jhu_epsilon(ε_entropy = 1.24, ε_marginal = 0.15)
+    epsilons = 2. .^ (-1:1:5)
+
+    _, analytic_expectations, _, _, analytic_covariances, _  = moment_analysis(sbtm_trajectories)
+    _, analytic_entropies = entropy_analysis(sbtm_trajectories, ε_entropy)
+
+    # for heatmap plotting
+    range = -3:0.1:3
+    indices = 1:50:201
+    x_grid = Iterators.product(range, range)
+    heatmaps = Matrix{Any}(undef, length(indices), length(epsilons)+1)
+    analytic_marginals = [[analytic_marginal(vcat(x...), t) for x in x_grid] for t in ts[indices]]
+    heatmaps[:, 1] = [heatmap(range, range, analytic_marginals[i]', title = "analytic marginal at t = $(round(t, digits = 2))") for (i, t) in enumerate(ts[indices])]
+
+    p1 = plot(title = "expectation comparison", ylabel = "mean position 2-norm")
+    plot!(p1, ts, norm.(analytic_expectations), label = "analytic")
+
+    p2 = plot(title = "covariance trace comparison", ylabel = "covariance trace")
+    plot!(p2, ts, tr.(analytic_covariances), label = nothing)
+
+    p3 = plot(title = "covariance norm comparison", ylabel = "covariance 2-norm")
+    plot!(p3, ts, norm.(analytic_covariances), label = nothing)
+
+    p4 = plot(title = "entropy comparison", ylabel = "entropy")
+    plot!(p4, ts, analytic_entropies, label = nothing)
+
+    for (j, ε) in enumerate(epsilons)
+        rounded_ε = round(ε, digits = 2)
+        data = JLD2.load("jhu_eps_experiment//jhu_epsilon_experiment_eps_$(rounded_ε).jld2")
+        trajectories = data["jhu_trajectories"] 
+
+        jhu_expectations, _, jhu_expectation_errors, jhu_covariances, analytic_covariances, jhu_covariance_errors = moment_analysis(trajectories)
+        jhu_entropies, _ = entropy_analysis(trajectories, ε_entropy)
+
+        
+        plot!(p1, ts, norm.(jhu_expectations), label = "ε = $(rounded_ε)")
+
+        
+        plot!(p2, ts, tr.(jhu_covariances), label = nothing)
+        
+        
+        plot!(p3, ts, norm.(jhu_covariances), label = nothing)
+
+        
+        plot!(p4, ts, jhu_entropies, label = nothing)
+        
+        jhu_empirical_marginals = [[empirical_marginal(ε_marginal, vcat(x...), xs) for x in x_grid] for xs in collect(eachslice(trajectories, dims=4))[indices]]
+        
+        for (i, t) in enumerate(ts[indices])
+            heatmaps[i, j+1] = heatmap(range, range, jhu_empirical_marginals[i]', title = "marginal at t = $(round(t, digits = 2)), ε = $(rounded_ε)")
+        end
+    end
+    heatmaps = permutedims(heatmaps, (2,1))
+    heatmap_plot = plot(heatmaps..., layout = (size(heatmaps, 2), size(heatmaps, 1)), size = (2500, 1300))
+    p1, p2, p3, p4, heatmaps, heatmap_plot
 end
 
 plotly()
 
-p1, p2, p3, heatmaps = make_plots()
-plot(p1, p2, p3, heatmaps..., layout = (3+length(heatmaps), 1), size = (900, 1200))
+# p1, p2, p3, p4, heatmaps, big_plot = make_plots()
+p1, p2, p3, p4, heatmaps, heatmap_plot = make_plots_jhu_epsilon()
+stats_plot = plot(p1, p2, p3, p4, layout = (4, 1), size = (1000, 1500))
+
+
 
 # Figuring out the best value of ε for the entropy
 # ep_range = 0.1:0.1:30.
