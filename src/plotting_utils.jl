@@ -29,3 +29,9 @@ function animate_2d(trajectories, title, Δts; samples = 1, fps = 5, target = ze
   end
   gif(anim, "$(title)_anim_fps$fps.gif", fps = fps)
 end
+
+function plot_losses(losses)
+    epochs = size(losses, 1)
+    p = plot(vec(losses), title = "Score approximation", xaxis = "epochs", yaxis = "loss", label = "training loss")
+    scatter!(p, 1:epochs:length(vec(losses)), vec(losses)[1:epochs:end], label = "discrete time propagation", marker = true)
+end

@@ -2,26 +2,29 @@ using Zygote
 
 include("utils.jl")
 
-function propagate(ε :: Number, x, xs, t, Δt, b, D) # O(size(xs, 3)^2)
-    d1 = gradient(x -> Mol(ε, x, xs), x)[1]/Mol(ε, x, xs)
-    d2 = sum( gradient(x -> mol(ε, x - x_q), x)[1]/Mol(ε, x_q, xs) for x_q in eachslice(xs, dims=3) )
-    x + Δt * (b(x, t) - D(x,t) * (d1 + d2))
+# solve using DifferentialEquations
+using DifferentialEquations
+
+function jhu(xs, Δts, b, D, ε :: T) where T
+    jhu_solve(T.(xs), T.(Δts), b, D, ε)
 end
 
-function jhu(xs, Δts, b, D, ε)
-    trajectories = zeros(eltype(xs), size(xs)..., 1+length(Δts)) # trajectories[:, i, j, k] is particle i of sample j at time k
-    trajectories[:, :, :, 1] = xs
-    jhu!(trajectories, Δts, b, D, ε)
-    trajectories
-end
-
-function jhu!(trajectories, Δts, b, D, ε)
-    t = zero(eltype(Δts))
-    for (k, Δt) in enumerate(Δts)
-        xs_k = @view trajectories[:, :, :, k]
-        for (j, x) in enumerate(eachslice(xs_k, dims = 3))
-            trajectories[:, :, j, k+1] = propagate(ε, x, xs_k, t, Δt, b, D)
-        end
-        t += Δt
+function jhu_solve(xs, Δts :: AbstractVector{T}, b, D, ε) where T
+    tspan = (zero(T), sum(Δts))
+    ts = vcat(zero(T), cumsum(Δts))
+    initial = xs
+    function f(xs, p, t)
+        d_bar, N, n = size(xs)
+        flat_xs = reshape(xs, d_bar*N, n)
+        xps = eachslice(flat_xs, dims=2)
+        m = [mol(ε, x_p - x_q) for x_q in xps, x_p in xps]
+        g = [gradient(x -> mol(ε, x - x_q), x_p)[1] for x_q in xps, x_p in xps]
+        M = reshape(sum(m, dims=1), :)
+        G = reshape(sum(g, dims=1), :)
+        d1 = reduce(hcat, G ./ M)
+        d2 = reduce(hcat, g * (one(eltype(M)) ./ M))
+        b(xs, t) - D(xs, t) * reshape(d1 + d2, d_bar, N, n)
     end
+    solution = solve(ODEProblem(f, initial, tspan), saveat = ts)
+    solution, cat(solution.u..., dims=4)
 end

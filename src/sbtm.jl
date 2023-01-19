@@ -1,6 +1,6 @@
 # implementing the algorithm from "probability flow solution of the fokker-planck equation" 2022
 
-using Flux, LinearAlgebra, Plots
+using Flux, LinearAlgebra
 using Distributions: MvNormal, logpdf
 using Zygote: gradient, withgradient
 using Flux.Optimise: Adam
@@ -17,12 +17,6 @@ loss(s, xs :: AbstractArray{T, 3}) where T =  (sum(x -> x^2, s(xs)) + T(2.0)*den
 
 score(ρ, x) = convert(eltype(x), sum(logpdf(ρ, x)))
 propagate(x, t, Δt, b, D, s) = x + Δt * (b(x, t) - D(x, t)*s(x))
-
-function plot_losses(losses)
-    epochs = size(losses, 1)
-    p = plot(vec(losses), title = "Score approximation", xaxis = "epochs", yaxis = "loss", label = "training loss")
-    scatter!(p, 1:epochs:length(vec(losses)), vec(losses)[1:epochs:end], label = "discrete time propagation", marker = true)
-end
 
 function custom_train!(s, losses, xs; optimiser = Adam(10^-4), epochs, record_losses = true, verbose = 1)
     θ = params(s)
@@ -67,8 +61,8 @@ end
 function initialize_s!(s, ρ₀, xs :: AbstractArray{T, 3}; optimiser = Adam(10^-4), ε = T(10^-4), verbose = 1) where T
     verbose > 1 && println("Initializing NN \n$s")
     ys = gradient(x -> score(ρ₀, x), xs)[1]
-    ys_sum_squares = sum(ys.^2)
-    square_error(s) = sum( (s(xs) - ys).^2 / ys_sum_squares )
+    ys_sum_squares = sum(y->y^2, ys)
+    square_error(s) = sum(y->y^2, (s(xs) - ys) ) / ys_sum_squares
     epoch = 0
     θ = params(s)
     loss_value = ε + one(T)

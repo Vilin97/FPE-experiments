@@ -33,7 +33,6 @@ function moving_trap_experiment(N=50, num_samples=100, num_timestamps=200)
     println("Done with initial setup. Took $(t1-t0) seconds.")
     jhu_trajectories = jhu(xs, Δts, b, D, ε)
     t2 = time()
-    # animation = animate_2d(jhu_trajectories, "jhu", Δts; target = target, plot_every = 1, fps = 5)
 
     println("Done with jhu. Took $(t2-t1) seconds.")
 
@@ -43,8 +42,6 @@ function moving_trap_experiment(N=50, num_samples=100, num_timestamps=200)
     println("Done with NN initialization. Took $(t3-t2) seconds.")
     sbtm_trajectories, losses, s_values = sbtm(xs, Δts, b, D, s; epochs = epochs, record_losses = true, verbose = 0)
     t4 = time()
-    # animation = animate_2d(trajectories, "sbtm", Δts, samples = 2, fps = 10, target = target)
-    # loss_plot = plot_losses(losses)
 
     println("Done with sbtm. Took $(t4-t3) seconds.")
 
@@ -63,15 +60,15 @@ function moving_trap_jhu_epsilon_experiment(N=50, num_samples=100, num_timestamp
     seed!(seed)
     xs, Δts, b, D, ρ₀, target, a, w, α, β = moving_trap(N, num_samples, num_timestamps)
 
-    epsilons = 2. .^ (-1:1:5)
+    epsilons = 0.1:0.02:0.2
     for ε in epsilons
         t1 = time()
-        jhu_trajectories = jhu(xs, Δts, b, D, ε)
+        solution, trajectories = jhu(xs, Δts, b, D, ε)
         t2 = time()
         println("Done with ε=$(round(ε, digits = 2)). Took $(t2-t1) seconds.")
 
         JLD2.save("jhu_eps_experiment//jhu_epsilon_experiment_eps_$(round(ε, digits = 2)).jld2", 
-        "jhu_trajectories", jhu_trajectories,
+        "jhu_trajectories", trajectories,
         "epsilon", ε,
         "seed", seed)
     end
