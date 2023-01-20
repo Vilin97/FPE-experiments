@@ -6,10 +6,8 @@ include("utils.jl")
 plotly()
 
 println("Loading data")
-data = JLD2.load("moving_trap_data_1234.jld2")
+data = JLD2.load("data/moving_trap_data_1234.jld2")
 sbtm_trajectories = data["sbtm_trajectories"]  
-losses = data["losses"] 
-s_values = data["s_values"] 
 jhu_trajectories = data["jhu_trajectories"] 
 @assert size(sbtm_trajectories) == size(jhu_trajectories)
 
@@ -59,10 +57,17 @@ function empirical_marginal(ε, x, xs :: AbstractArray{T, 3}) where T
 end
 
 "analytic marginal pdf at point x ∈ R²"
-function analytic_marginal(x, t)
+function analytic_marginal(x, t :: Real)
     d_bar = length(x)
     sol = ρ(t)
     pdf(MvNormal(mean(sol)[1:d_bar], cov(sol)[1:d_bar, 1:d_bar]), x)
+end
+
+function analytic_marginals(xs, time_index, analytic_solution)
+    d_bar = length(first(xs))
+    sol = analytic_solution[time_index]
+    marginal_dist = MvNormal(sol.m, I(d_bar)*(sol.Cd - sol.Co)[1] + ones(Float32, d_bar, d_bar)*sol.Co[1])
+    pdf(marginal_dist, xs)
 end
 
 # empirical statistics
@@ -95,11 +100,12 @@ function make_plots(trajectories, labels; ε_entropy = 1.24, ε_marginal = 0.15)
 
     # for heatmap plotting
     range = -3:0.1:3
-    indices = 1:50:201
     x_grid = Iterators.product(range, range)
-    heatmaps = Matrix{Any}(undef, length(trajectories)+1, length(indices))
-    analytic_marginals = [[analytic_marginal(vcat(x...), t) for x in x_grid] for t in ts[indices]]
-    heatmaps[1, :] = [heatmap(range, range, analytic_marginals[i]', title = "analytic marginal at t = $(round(t, digits = 2))") for (i, t) in enumerate(ts[indices])]
+    time_indices = 1:50:201
+    heatmaps = Matrix{Any}(undef, length(trajectories)+1, length(time_indices))
+    analytic_marginals_ = [analytic_marginals(collect.(x_grid), time_index, analytic_solution) for time_index in time_indices]
+
+    heatmaps[1, :] = [heatmap(range, range, analytic_marginals_[i]', title = "analytic marginal at t = $(round(t, digits = 2))") for (i, t) in enumerate(ts[time_indices])]
 
     p1 = plot(title = "expectation comparison", ylabel = "mean position 2-norm")
     plot!(p1, ts, norm.(analytic_expectations), label = "analytic")
@@ -122,15 +128,15 @@ function make_plots(trajectories, labels; ε_entropy = 1.24, ε_marginal = 0.15)
         plot!(p3, ts, norm.(covariances, 1), label = nothing)
         plot!(p4, ts, entropies, label = nothing)
         
-        empirical_marginals = [[empirical_marginal(ε_marginal, vcat(x...), xs) for x in x_grid] for xs in collect(eachslice(trajectory, dims=4))[indices]]
+        empirical_marginals = [[empirical_marginal(ε_marginal, [x...], xs) for x in x_grid] for xs in collect(eachslice(trajectory, dims=4))[time_indices]]
         
-        for (i, t) in enumerate(ts[indices])
+        for (i, t) in enumerate(ts[time_indices])
             heatmaps[j+1, i] = heatmap(range, range, empirical_marginals[i]', title = "marginal at t = $(round(t, digits = 2)), $(labels[j])")
         end
-        @show heatmaps
     end
     heatmap_plot = plot(heatmaps..., layout = (size(heatmaps, 2), size(heatmaps, 1)), size = (2000, 1300))
-    p1, p2, p3, p4, heatmaps, heatmap_plot
+    stats_plot = plot(p1, p2, p3, p4, layout = (4, 1), size = (1000, 1500))
+    stats_plot, heatmap_plot
 end
 
 # epsilon experiment:
@@ -139,8 +145,7 @@ function jhu_epsilon_experiment()
     rounded_εs = round.(epsilons, digits = 2)
     trajectories = [JLD2.load("jhu_eps_experiment//jhu_epsilon_experiment_eps_$(rounded_ε).jld2")["jhu_trajectories"] for rounded_ε in rounded_εs]
     labels = ["ε = $(rounded_ε)" for rounded_ε in rounded_εs]
-    p1, p2, p3, p4, heatmaps, heatmap_plot = make_plots(trajectories, labels; ε_marginal = 0.14)
-    stats_plot = plot(p1, p2, p3, p4, layout = (4, 1), size = (1000, 1500))
+    stats_plot, heatmap_plot = make_plots(trajectories, labels; ε_marginal = 0.14)
     stats_plot, heatmap_plot
 end
 
@@ -148,8 +153,19 @@ end
 function sbtm_vs_jhu_experiment()
     trajectories = [sbtm_trajectories, jhu_trajectories]
     labels = ["sbtm", "jhu"]
-    p1, p2, p3, p4, heatmaps, heatmap_plot = make_plots(trajectories, labels; ε_marginal = 0.14)
-    stats_plot = plot(p1, p2, p3, p4, layout = (4, 1), size = (1000, 1500))
+    stats_plot, heatmap_plot = make_plots(trajectories, labels; ε_marginal = 0.14)
     stats_plot, heatmap_plot
 end
-stats_plot, heatmap_plot = sbtm_vs_jhu_experiment()
+
+# no_drift_experiment
+function no_drift_experiment()
+    data = JLD2.load("no_drift_experiment/moving_trap_data_$(1000000).jld2")
+    sbtm_trajectories = data["sbtm_trajectories"]  
+    jhu_trajectories = data["jhu_trajectories"] 
+    trajectories = [sbtm_trajectories, jhu_trajectories]
+    labels = ["sbtm", "jhu"]
+    stats_plot, heatmap_plot = make_plots(trajectories, labels; ε_marginal = 0.14)
+    stats_plot, heatmap_plot
+end
+
+stats_plot, heatmap_plot = no_drift_experiment()
