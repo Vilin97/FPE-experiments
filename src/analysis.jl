@@ -5,30 +5,31 @@ using Random: seed!
 include("utils.jl")
 plotly()
 
-println("Loading data")
-data = JLD2.load("data/moving_trap_data_1234.jld2")
-sbtm_trajectories = data["sbtm_trajectories"]  
-jhu_trajectories = data["jhu_trajectories"] 
-@assert size(sbtm_trajectories) == size(jhu_trajectories)
-
 # reconstruct the initial parameters
-seed!(data["seed"])
-d_bar, N, num_samples, num_timestamps = size(sbtm_trajectories)
-xs, Δts, b, D, ρ₀, target, a, w, α, β = moving_trap(N, num_samples, num_timestamps-1)
-ts = vcat(0f0, cumsum(Δts))
+function initial_params(N, num_samples, num_timestamps, seed = N*num_samples*num_timestamps)
+    seed!(seed)
+    d_bar = 2
+    xs, Δts, b, D, ρ₀, target, a, w, α, β = moving_trap(N, num_samples, num_timestamps)
+    ts = vcat(0f0, cumsum(Δts))
+    xs, Δts, b, D, ρ₀, target, a, w, α, β, ts, d_bar
+end
 
 # solve analyticly
-tspan = (0f0, sum(Δts))
-p = (α, size(xs, 2), t -> D(xs, t), β) # assumes D is constant in space
-initial = ComponentVector(m = mean(ρ₀), Cd = cov(ρ₀), Co = zeros(eltype(xs), 2, 2))
-function f!(dcov, cov, p, t :: T) where T
-    α, N, D, β = p
-    dcov.m = β(t) - cov.m
-    dcov.Cd = T(2)*(α-one(T))*cov.Cd - T(2)*α/N*(cov.Cd + (N-1)*cov.Co) + T(2)*D(t)*I
-    dcov.Co = T(2)*(α-one(T))*cov.Co - T(2)*α/N*(cov.Cd + (N-1)*cov.Co)
+function solve_analytically()
+    println("Solving analytically")
+    tspan = (0f0, sum(Δts))
+    p = (α, size(xs, 2), t -> D(xs, t), β) # assumes D is constant in space
+    initial = ComponentVector(m = mean(ρ₀), Cd = cov(ρ₀), Co = zeros(eltype(xs), 2, 2))
+    function f!(dcov, cov, p, t :: T) where T
+        α, N, D, β = p
+        dcov.m = β(t) - cov.m
+        dcov.Cd = T(2)*(α-one(T))*cov.Cd - T(2)*α/N*(cov.Cd + (N-1)*cov.Co) + T(2)*D(t)*I
+        dcov.Co = T(2)*(α-one(T))*cov.Co - T(2)*α/N*(cov.Cd + (N-1)*cov.Co)
+    end
+    analytic_solution = solve(ODEProblem(f!, initial, tspan, p), saveat = ts)
+    ρ(t) = MvNormal(kron(ones(N), analytic_solution(t).m), kron((analytic_solution(t).Cd - analytic_solution(t).Co), I(N)) + kron(analytic_solution(t).Co, ones(Float32, N, N)))
+    return analytic_solution, ρ
 end
-analytic_solution = solve(ODEProblem(f!, initial, tspan, p), saveat = ts)
-ρ(t) = MvNormal(kron(ones(N), analytic_solution(t).m), kron((analytic_solution(t).Cd - analytic_solution(t).Co), I(N)) + kron(analytic_solution(t).Co, ones(Float32, N, N)))
 
 function analytic_score(analytic_solution, time_index, x)
     # NOTE: assumes the initial covariance matrix is scalar*I
@@ -56,17 +57,11 @@ function empirical_marginal(ε, x, xs :: AbstractArray{T, 3}) where T
     Mol(ε, x, xs[:,1,:])/size(xs, 3)
 end
 
-"analytic marginal pdf at point x ∈ R²"
-function analytic_marginal(x, t :: Real)
-    d_bar = length(x)
-    sol = ρ(t)
-    pdf(MvNormal(mean(sol)[1:d_bar], cov(sol)[1:d_bar, 1:d_bar]), x)
-end
-
+"analytic marginal pdf at points xs"
 function analytic_marginals(xs, time_index, analytic_solution)
     d_bar = length(first(xs))
     sol = analytic_solution[time_index]
-    marginal_dist = MvNormal(sol.m, I(d_bar)*(sol.Cd - sol.Co)[1] + ones(Float32, d_bar, d_bar)*sol.Co[1])
+    marginal_dist = MvNormal(sol.m, I(d_bar)*(sol.Cd - sol.Co)[1] + ones(d_bar, d_bar)*sol.Co[1])
     pdf(marginal_dist, xs)
 end
 
@@ -76,7 +71,7 @@ empirical_second_moment(flat_xs :: AbstractArray{T, 2}) where T = flat_xs * flat
 empirical_covariance(flat_xs :: AbstractArray{T, 2}) where T = empirical_second_moment(flat_xs .- empirical_first_moment(flat_xs))
 
 function moment_analysis(trajectories)
-    flat_trajectories = reshape(trajectories, d_bar*N, num_samples, num_timestamps)
+    flat_trajectories = reshape(trajectories, d_bar*N, num_samples, :)
     expectations = [empirical_first_moment(flat_xs) for flat_xs in eachslice(flat_trajectories, dims=3)]
     covariances = [empirical_covariance(flat_xs) for flat_xs in eachslice(flat_trajectories, dims=3)]
     analytic_expectations = [mean(ρ(t)) for t in ts]
@@ -87,7 +82,7 @@ function moment_analysis(trajectories)
 end
 
 function entropy_analysis(trajectories, ε)
-    flat_trajectories = reshape(trajectories, d_bar*N, num_samples, num_timestamps)
+    flat_trajectories = reshape(trajectories, d_bar*N, num_samples, :)
     entropies = [empirical_entropy(ε, flat_xs) for flat_xs in eachslice(flat_trajectories, dims=3)]
     analytic_entropies = [analytic_entropy(t) for t in ts]
     entropies, analytic_entropies
@@ -101,7 +96,7 @@ function make_plots(trajectories, labels; ε_entropy = 1.24, ε_marginal = 0.15)
     # for heatmap plotting
     range = -3:0.1:3
     x_grid = Iterators.product(range, range)
-    time_indices = 1:50:201
+    time_indices = 1:size(trajectories[1], 4)÷4:size(trajectories[1], 4)
     heatmaps = Matrix{Any}(undef, length(trajectories)+1, length(time_indices))
     analytic_marginals_ = [analytic_marginals(collect.(x_grid), time_index, analytic_solution) for time_index in time_indices]
 
@@ -145,15 +140,18 @@ function jhu_epsilon_experiment()
     rounded_εs = round.(epsilons, digits = 2)
     trajectories = [JLD2.load("jhu_eps_experiment//jhu_epsilon_experiment_eps_$(rounded_ε).jld2")["jhu_trajectories"] for rounded_ε in rounded_εs]
     labels = ["ε = $(rounded_ε)" for rounded_ε in rounded_εs]
-    stats_plot, heatmap_plot = make_plots(trajectories, labels; ε_marginal = 0.14)
+    stats_plot, heatmap_plot = make_plots(trajectories, labels)
     stats_plot, heatmap_plot
 end
 
 # sbtm vs jhu
 function sbtm_vs_jhu_experiment()
+    data = JLD2.load("data/moving_trap_data_1000000.jld2")
+    sbtm_trajectories = data["sbtm_trajectories"]
+    jhu_trajectories = data["jhu_trajectories"]
     trajectories = [sbtm_trajectories, jhu_trajectories]
     labels = ["sbtm", "jhu"]
-    stats_plot, heatmap_plot = make_plots(trajectories, labels; ε_marginal = 0.14)
+    stats_plot, heatmap_plot = make_plots(trajectories, labels)
     stats_plot, heatmap_plot
 end
 
@@ -164,8 +162,47 @@ function no_drift_experiment()
     jhu_trajectories = data["jhu_trajectories"] 
     trajectories = [sbtm_trajectories, jhu_trajectories]
     labels = ["sbtm", "jhu"]
-    stats_plot, heatmap_plot = make_plots(trajectories, labels; ε_marginal = 0.14)
+    stats_plot, heatmap_plot = make_plots(trajectories, labels)
     stats_plot, heatmap_plot
 end
 
-stats_plot, heatmap_plot = no_drift_experiment()
+function print_mol_stats(xs, εs, b, D, t = 0.)
+    drift = b(xs, t)
+    d_bar, N, n = size(xs)
+    flat_xs = Float64.(reshape(xs, d_bar*N, n))
+    xps = eachslice(flat_xs, dims=2)
+    pairwise_distances = [norm(x_p - x_q) for x_q in xps, x_p in xps]
+
+    s_value = JLD2.load("data/moving_trap_data_1234.jld2")["s_values"][1]
+
+    diffusions = []
+    for ε in εs   
+        m = [mol(ε, x_p - x_q) for x_q in xps, x_p in xps]
+        g = [grad_mol(ε, x_p-x_q) for x_q in xps, x_p in xps]
+        M = reshape(sum(m, dims=1), :)
+        G = reshape(sum(g, dims=1), :)
+        G_by_M = reduce(hcat, G ./ M)
+        g_by_M = reduce(hcat, g * (one(eltype(M)) ./ M))
+        diffusion = D(xs, t) * reshape(G_by_M + g_by_M, d_bar, N, n)
+
+        push!(diffusions, diffusion)
+        
+    end
+    # plot on log scale
+    pl1 = plot(εs, norm.(diffusions, 1)./N, label = "jhu diffusion", xlabel = "ε", ylabel = "1-norm/N", xscale = :log10, yscale = :log10)
+    plot!(pl1, εs, repeat([norm(D(xs,t)*s_value, 1)/N], length(εs)), label = "sbtm diffusion")
+    plot!(pl1, εs, repeat([norm(drift, 1)/N], length(εs)), label = "drift")
+    # pl2 = plot(εs, norm.(diffusions, Inf)./N, label = nothing, xscale = :log10, yscale = :log10, xlabel = "ε", ylabel = "Inf-norm/N")
+    # plot!(pl2, εs, repeat([norm(s_value, Inf)/N], length(εs)), label = nothing)
+    # plot!(pl2, εs, repeat([norm(drift, Inf)/N], length(εs)), label = nothing)
+    plot(pl1, size = (1000, 1000), title = "N = $N, diffusion vs drift norms at update step", legend = :best)
+end
+
+N, num_samples, num_timestamps = 50, 100, 200
+xs, Δts, b, D, ρ₀, target, a, w, α, β, ts, d_bar = initial_params(N, num_samples, num_timestamps)
+analytic_solution, ρ = solve_analytically()
+stats_plot, heatmap_plot = sbtm_vs_jhu_experiment()
+
+# comparing the norms of drift and diffusion for different values of ε
+# εs = 2. .^(2:8) 
+# stats_plot = print_mol_stats(xs, εs, b, D)

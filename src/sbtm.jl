@@ -5,7 +5,7 @@ using Distributions: MvNormal, logpdf
 using Zygote: gradient, withgradient
 using Flux.Optimise: Adam
 using Flux: params
-
+# TODO move to using DifferentialEquations.jl to speed up sbtm
 # approximate divergence of f at v
 function denoise(s, xs :: AbstractArray{T, 3}, α = T(0.1)) where T
     d = length(xs)

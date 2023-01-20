@@ -22,6 +22,7 @@ function initialize_s(ρ₀, xs, size_hidden, num_hidden; activation = relu, ver
     return s
 end
 
+# TODO split sbtm and jhu into separate functions so that I can run only one of them if needed
 function moving_trap_experiment(N=50, num_samples=100, num_timestamps=200; folder = "data")
     seed = N*num_samples*num_timestamps
     seed!(seed)
@@ -29,7 +30,7 @@ function moving_trap_experiment(N=50, num_samples=100, num_timestamps=200; folde
 
     println("Done with initial setup.")
 
-    ε = 0.14
+    ε = 128.
     (solution, jhu_trajectories), t = @timed jhu(xs, Δts, b, D, ε)
     println("Done with jhu. Took $t seconds.")
 
@@ -44,6 +45,7 @@ function moving_trap_experiment(N=50, num_samples=100, num_timestamps=200; folde
         "losses", losses, 
         "s_values", s_values, 
         "jhu_trajectories", jhu_trajectories,
+        "epsilon", ε,
         "seed", seed)
 
     println("Done with saving")
@@ -71,4 +73,4 @@ function moving_trap_jhu_epsilon_experiment(N=50, num_samples=100, num_timestamp
 end
 
 # moving_trap_jhu_epsilon_experiment()
-moving_trap_experiment(folder = "no_drift_experiment")
+moving_trap_experiment(folder = "data")

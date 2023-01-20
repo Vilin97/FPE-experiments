@@ -14,8 +14,8 @@ function moving_trap(N, num_samples, num_timestamps)
     Δts = Float32(0.01)*ones(Float32, num_timestamps) # time increments
       
     # define drift vector field b and diffusion matrix D
-    β(t) = a*[cos(π*w*0f0), sin(π*w*0f0)] # TODO change back after the no-drift experiment
-    # β(t) = a*[cos(π*w*t), sin(π*w*t)]
+    # β(t) = a*[cos(π*w*0f0), sin(π*w*0f0)] # no-drift case
+    β(t) = a*[cos(π*w*t), sin(π*w*t)]
     function b(x, t)
         attract = β(t) .- x
         repel = α * (x .- mean(x, dims = 2))
