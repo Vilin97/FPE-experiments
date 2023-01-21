@@ -22,17 +22,40 @@ function initialize_s(ρ₀, xs, size_hidden, num_hidden; activation = relu, ver
     return s
 end
 
-# TODO split sbtm and jhu into separate functions so that I can run only one of them if needed
-function moving_trap_experiment(N=50, num_samples=100, num_timestamps=200; folder = "data")
+
+function moving_trap_experiment(N=1, num_samples=100, num_timestamps=200; folder = "data")
+    moving_trap_experiment_jhu(N, num_samples, num_timestamps; folder = folder)
+    moving_trap_experiment_sbtm(N, num_samples, num_timestamps; folder = folder)
+end
+
+function moving_trap_experiment_jhu(N=1, num_samples=100, num_timestamps=200; folder = "data")
     seed = N*num_samples*num_timestamps
     seed!(seed)
     xs, Δts, b, D, ρ₀, target, a, w, α, β = moving_trap(N, num_samples, num_timestamps)
 
-    println("Done with initial setup.")
+    println("Done with initial setup for jhu.")
 
-    ε = 128.
+    ε = 0.14
     (solution, jhu_trajectories), t = @timed jhu(xs, Δts, b, D, ε)
     println("Done with jhu. Took $t seconds.")
+
+    JLD2.save("$(folder)/moving_trap_jhu_$seed.jld2", 
+        "trajectories", jhu_trajectories,
+        "epsilon", ε,
+        "seed", seed,
+        "N", N,
+        "num_samples", num_samples,
+        "num_timestamps", num_timestamps)
+
+    println("Done with saving for jhu")
+end
+
+function moving_trap_experiment_sbtm(N=1, num_samples=100, num_timestamps=200; folder = "data")
+    seed = N*num_samples*num_timestamps
+    seed!(seed)
+    xs, Δts, b, D, ρ₀, target, a, w, α, β = moving_trap(N, num_samples, num_timestamps)
+
+    println("Done with initial setup for sbtm.")
 
     s, t = @timed initialize_s(ρ₀, xs, 100, 1, verbose = 1)
     epochs = 25
@@ -40,15 +63,16 @@ function moving_trap_experiment(N=50, num_samples=100, num_timestamps=200; folde
     (sbtm_trajectories, losses, s_values), t = @timed sbtm(xs, Δts, b, D, s; epochs = epochs, record_losses = true, verbose = 0)
     println("Done with sbtm. Took $t seconds.")
 
-    JLD2.save("$(folder)/moving_trap_data_$seed.jld2", 
-        "sbtm_trajectories", sbtm_trajectories, 
+    JLD2.save("$(folder)/moving_trap_sbtm_$seed.jld2", 
+        "trajectories", sbtm_trajectories, 
         "losses", losses, 
         "s_values", s_values, 
-        "jhu_trajectories", jhu_trajectories,
-        "epsilon", ε,
-        "seed", seed)
+        "seed", seed,
+        "N", N,
+        "num_samples", num_samples,
+        "num_timestamps", num_timestamps)
 
-    println("Done with saving")
+    println("Done with saving for sbtm")
 end
 
 function moving_trap_jhu_epsilon_experiment(N=50, num_samples=100, num_timestamps=200)
@@ -72,5 +96,7 @@ function moving_trap_jhu_epsilon_experiment(N=50, num_samples=100, num_timestamp
     println("Done with saving")
 end
 
-# moving_trap_jhu_epsilon_experiment()
-moving_trap_experiment(folder = "data")
+N=1
+num_samples=100
+num_timestamps=200
+moving_trap_experiment(N, num_samples, num_timestamps, folder = "data")

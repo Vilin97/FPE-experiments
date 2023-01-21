@@ -90,6 +90,7 @@ end
 
 function make_plots(trajectories, labels; ε_entropy = 1.24, ε_marginal = 0.15)
     println("Making plots")
+    d_bar, N, num_samples, num_timestamps = size(trajectories[1])
     _, analytic_expectations, _, _, analytic_covariances, _  = moment_analysis(trajectories[1])
     _, analytic_entropies = entropy_analysis(trajectories[1], ε_entropy)
 
@@ -102,7 +103,7 @@ function make_plots(trajectories, labels; ε_entropy = 1.24, ε_marginal = 0.15)
 
     heatmaps[1, :] = [heatmap(range, range, analytic_marginals_[i]', title = "analytic marginal at t = $(round(t, digits = 2))") for (i, t) in enumerate(ts[time_indices])]
 
-    p1 = plot(title = "expectation comparison", ylabel = "mean position 2-norm")
+    p1 = plot(title = "mean position comparison, N = $(N), num_samples = $(num_samples)", ylabel = "mean position 2-norm")
     plot!(p1, ts, norm.(analytic_expectations), label = "analytic")
 
     p2 = plot(title = "covariance trace comparison", ylabel = "covariance trace")
@@ -145,14 +146,21 @@ function jhu_epsilon_experiment()
 end
 
 # sbtm vs jhu
-function sbtm_vs_jhu_experiment()
-    data = JLD2.load("data/moving_trap_data_1000000.jld2")
-    sbtm_trajectories = data["sbtm_trajectories"]
-    jhu_trajectories = data["jhu_trajectories"]
+function sbtm_vs_jhu_experiment(N, num_samples, num_timestamps)
+    println("Loading data for N = $N, num_samples = $num_samples, num_timestamps = $num_timestamps")
+    seed = N*num_samples*num_timestamps
+    seed!(seed)
+    data_jhu = JLD2.load("data/moving_trap_jhu_$seed.jld2")
+    data_sbtm = JLD2.load("data/moving_trap_sbtm_$seed.jld2")
+    @assert data_jhu["N"] == data_sbtm["N"] && data_jhu["num_samples"] == data_sbtm["num_samples"] && data_jhu["num_timestamps"] == data_sbtm["num_timestamps"] && data_jhu["N"] == N && data_jhu["num_samples"] == num_samples && data_jhu["num_timestamps"] == num_timestamps
+    jhu_trajectories = data_jhu["trajectories"]
+    sbtm_trajectories = data_sbtm["trajectories"]
     trajectories = [sbtm_trajectories, jhu_trajectories]
     labels = ["sbtm", "jhu"]
+
+    global xs, Δts, b, D, ρ₀, target, a, w, α, β, ts, d_bar = initial_params(N, num_samples, num_timestamps)
+    global analytic_solution, ρ = solve_analytically()
     stats_plot, heatmap_plot = make_plots(trajectories, labels)
-    stats_plot, heatmap_plot
 end
 
 # no_drift_experiment
@@ -198,10 +206,8 @@ function print_mol_stats(xs, εs, b, D, t = 0.)
     plot(pl1, size = (1000, 1000), title = "N = $N, diffusion vs drift norms at update step", legend = :best)
 end
 
-N, num_samples, num_timestamps = 50, 100, 200
-xs, Δts, b, D, ρ₀, target, a, w, α, β, ts, d_bar = initial_params(N, num_samples, num_timestamps)
-analytic_solution, ρ = solve_analytically()
-stats_plot, heatmap_plot = sbtm_vs_jhu_experiment()
+# assume N, num_samples, num_timestamps are already defined
+stats_plot, heatmap_plot = sbtm_vs_jhu_experiment(N, num_samples, num_timestamps)
 
 # comparing the norms of drift and diffusion for different values of ε
 # εs = 2. .^(2:8) 
