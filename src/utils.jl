@@ -32,3 +32,14 @@ function moving_trap(N, num_samples, num_timestamps)
 
     xs, Δts, b, D, ρ₀, target, a, w, α, β
 end
+
+function attractive_origin(num_samples, num_timestamps)
+    b(x,t) = -x
+    D(x,t) = one(eltype(x))
+    ρ(t) = MvNormal((1 - exp(-2*(t+0.1)))*I(2)) # -> MvNormal(I(2)) as t -> ∞
+    ρ₀ = ρ(0)
+    xs = convert(Array{Float32, 3}, reshape(rand(ρ₀, num_samples), 2, 1, num_samples))
+    Δts = Float32(0.01)*ones(Float32, num_timestamps)
+
+    xs, Δts, b, D, ρ₀, ρ
+end

@@ -33,13 +33,11 @@ function solve_analytically(N, num_samples, num_timestamps)
 end
 
 function analytic_entropies(ρ, ts)
-    [size(ρ(t))[1]/2*(log(2*π) + 1) + 1/2*log(det(cov(ρ(t)))) for t in ts]
+    entropy.(ρ.(ts))
 end
 
 function analytic_moments(ρ, ts)
-    m = [mean(ρ(t)) for t in ts]
-    C = [cov(ρ(t)) for t in ts]
-    m, C
+    mean.(ρ.(ts)), cov.(ρ.(ts))
 end
 
 "analytic marginal pdf at points xs"
@@ -174,7 +172,13 @@ function no_drift_experiment()
     stats_plot, heatmap_plot
 end
 
-function print_mol_stats(xs, εs, b, D, t = 0.)
+function print_mol_stats(N, num_samples, num_timestamps, t = 0.)
+    seed = N*num_samples*num_timestamps
+    seed!(seed)
+    xs, Δts, b, D, ρ₀, target, a, w, α, β = moving_trap(N, num_samples, num_timestamps)
+
+    εs = 1/(π) .* (0.6:0.2:1.4)
+
     drift = b(xs, t)
     d_bar, N, n = size(xs)
     flat_xs = Float64.(reshape(xs, d_bar*N, n))
@@ -194,23 +198,17 @@ function print_mol_stats(xs, εs, b, D, t = 0.)
         diffusion = D(xs, t) * reshape(G_by_M + g_by_M, d_bar, N, n)
 
         push!(diffusions, diffusion)
-        
     end
     # plot on log scale
-    pl1 = plot(εs, norm.(diffusions, 1)./N, label = "jhu diffusion", xlabel = "ε", ylabel = "1-norm/N", xscale = :log10, yscale = :log10)
-    plot!(pl1, εs, repeat([norm(D(xs,t)*s_value, 1)/N], length(εs)), label = "sbtm diffusion")
-    plot!(pl1, εs, repeat([norm(drift, 1)/N], length(εs)), label = "drift")
+    pl1 = plot(εs, norm.(diffusions, 1), label = "jhu diffusion", xlabel = "ε", ylabel = "1-norm", title = "N = $N, diffusion vs drift norms at update step", yscale = :log10, xticks = εs)
+    plot!(pl1, εs, repeat([norm(D(xs,t)*s_value, 1)], length(εs)), label = "sbtm diffusion")
+    plot!(pl1, εs, repeat([norm(drift, 1)], length(εs)), label = "drift")
     # pl2 = plot(εs, norm.(diffusions, Inf)./N, label = nothing, xscale = :log10, yscale = :log10, xlabel = "ε", ylabel = "Inf-norm/N")
     # plot!(pl2, εs, repeat([norm(s_value, Inf)/N], length(εs)), label = nothing)
     # plot!(pl2, εs, repeat([norm(drift, Inf)/N], length(εs)), label = nothing)
-    plot(pl1, size = (1000, 1000), title = "N = $N, diffusion vs drift norms at update step", legend = :best)
 end
 
-# assume N, num_samples, num_timestamps are already defined
+print_mol_stats(N, num_samples, num_timestamps)
+
+
 # stats_plot, heatmap_plot = sbtm_vs_jhu_experiment(N, num_samples, num_timestamps)
-
-# comparing the norms of drift and diffusion for different values of ε
-# εs = 2. .^(2:8) 
-# stats_plot = print_mol_stats(xs, εs, b, D)
-
-stats_plot, heatmap_plot = sbtm_new_old_experiment(N, num_samples, num_timestamps)

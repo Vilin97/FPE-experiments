@@ -5,8 +5,10 @@ include("utils.jl")
 # solve using DifferentialEquations
 using DifferentialEquations
 
-function jhu(xs, Δts, b, D, ε :: T) where T
-    jhu_solve(T.(xs), T.(Δts), b, D, ε)
+function jhu(xs, Δts, b, D; ε = 1/π, ρ₀)
+    T = typeof(ε)
+    trajectories, solution = jhu_solve(T.(xs), T.(Δts), b, D, ε)
+    trajectories, solution
 end
 
 function jhu_solve(xs, Δts :: AbstractVector{T}, b, D, ε) where T

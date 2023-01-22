@@ -6,71 +6,30 @@ include("sbtm.jl")
 include("jhu.jl")
 
 # first example from paper
-
-function initialize_s(ρ₀, xs, size_hidden, num_hidden; activation = relu, verbose = 1, kwargs...)
-    d_bar, N, n = size(xs)
-    d = d_bar*N
-    s = Chain(
-        # xs -> reshape(xs, d, n),
-        Dense(d_bar => size_hidden, activation),
-        repeat([Dense(size_hidden, size_hidden), activation], num_hidden-1)...,
-        Dense(size_hidden => d_bar)
-        # xs -> reshape(xs, d_bar, N, n)
-        )
-    epochs,t = @timed initialize_s!(s, ρ₀, xs; verbose = verbose, kwargs...)
-    println("Done with NN initialization. Took $epochs epochs and $t seconds. Initial loss: $(loss(s,xs))")
-    return s
+function moving_trap_experiment_combined(N, num_samples, num_timestamps; folder = "data")
+    moving_trap_experiment(N, num_samples, num_timestamps, sbtm, "sbtm"; folder = folder)
+    moving_trap_experiment(N, num_samples, num_timestamps, jhu, "jhu"; folder = folder)
 end
 
-
-function moving_trap_experiment(N, num_samples, num_timestamps; folder = "data")
-    moving_trap_experiment_jhu(N, num_samples, num_timestamps; folder = folder)
-    moving_trap_experiment_sbtm(N, num_samples, num_timestamps; folder = folder)
-end
-
-function moving_trap_experiment_jhu(N, num_samples, num_timestamps; folder = "data")
+function moving_trap_experiment(N, num_samples, num_timestamps, method, method_name; folder = "data", kwargs...)
     seed = N*num_samples*num_timestamps
     seed!(seed)
     xs, Δts, b, D, ρ₀, target, a, w, α, β = moving_trap(N, num_samples, num_timestamps)
 
-    println("Done with initial setup for jhu.")
+    println("Done with initial setup for $method_name.")
 
-    ε = 0.14
-    (jhu_trajectories, _), t = @timed jhu(xs, Δts, b, D, ε)
-    println("Done with jhu. Took $t seconds.")
+    (trajectories, _), t = @timed method(xs, Δts, b, D; ρ₀ = ρ₀, kwargs...)
+    println("Done with $method_name. Took $t seconds.")
 
-    JLD2.save("$(folder)/moving_trap_jhu_$seed.jld2", 
-        "trajectories", jhu_trajectories,
-        "epsilon", ε,
+    JLD2.save("$(folder)/moving_trap_$(method_name)_$seed.jld2", 
+        "trajectories", trajectories,
+        "kwargs", kwargs,
         "seed", seed,
         "N", N,
         "num_samples", num_samples,
         "num_timestamps", num_timestamps)
 
-    println("Done with saving for jhu")
-end
-
-function moving_trap_experiment_sbtm(N, num_samples, num_timestamps; folder = "data")
-    seed = N*num_samples*num_timestamps
-    seed!(seed)
-    xs, Δts, b, D, ρ₀, target, a, w, α, β = moving_trap(N, num_samples, num_timestamps)
-
-    println("Done with initial setup for sbtm.")
-
-    s = initialize_s(ρ₀, xs, 100, 1)
-    (sbtm_trajectories, losses, s_values), t = @timed sbtm(xs, Δts, b, D, s)
-    println("Done with sbtm. Took $t seconds.")
-
-    JLD2.save("$(folder)/moving_trap_sbtm_$seed.jld2", 
-        "trajectories", sbtm_trajectories, 
-        "losses", losses, 
-        "s_values", s_values, 
-        "seed", seed,
-        "N", N,
-        "num_samples", num_samples,
-        "num_timestamps", num_timestamps)
-
-    println("Done with saving for sbtm")
+    println("Done with saving for $method_name")
 end
 
 function moving_trap_jhu_epsilon_experiment(N=50, num_samples=100, num_timestamps=200)
@@ -131,7 +90,37 @@ function moving_trap_experiment_sbtm_old_new(N, num_samples, num_timestamps; fol
     println("Done with saving for sbtm")
 end
 
+function attractive_origin_experiment_combined(num_samples, num_timestamps; folder = "data")
+    attractive_origin_experiment(num_samples, num_timestamps, sbtm, "sbtm"; folder = folder)
+    attractive_origin_experiment(num_samples, num_timestamps, jhu, "jhu"; folder = folder)
+end
+
+function attractive_origin_experiment(num_samples, num_timestamps, method, method_name; folder = "data", kwargs...)
+    seed = num_samples*num_timestamps
+    seed!(seed)
+    xs, Δts, b, D, ρ₀, ρ = attractive_origin(num_samples, num_timestamps)
+
+    println("Done with initial setup for $method_name.")
+
+    (trajectories, _), t = @timed method(xs, Δts, b, D; ρ₀ = ρ₀, kwargs...)
+    println("Done with $method_name. Took $t seconds.")
+
+    JLD2.save("$(folder)/attractive_origin_$(method_name)_$seed.jld2", 
+        "trajectories", trajectories,
+        "kwargs", kwargs,
+        "seed", seed,
+        "N", N,
+        "num_samples", num_samples,
+        "num_timestamps", num_timestamps)
+
+    println("Done with saving for $method_name")
+end
+
 N=50
 num_samples=100
 num_timestamps=200
-moving_trap_experiment_sbtm_old_new(N, num_samples, num_timestamps, folder = "old_new_sbtm")
+# moving_trap_experiment_combined(N, num_samples, num_timestamps, folder = "data")
+
+num_samples=100
+num_timestamps=200
+attractive_origin_experiment_combined(num_samples, num_timestamps, folder = "data")
