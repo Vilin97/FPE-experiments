@@ -32,20 +32,3 @@ function moving_trap(N, num_samples, num_timestamps)
 
     xs, Δts, b, D, ρ₀, target, a, w, α, β
 end
-
-# function attractive_origin()
-#     d = 2
-#     N = 1
-#     num_samples = 9
-#     Δts = 0.01*ones(Float32, 5)
-#     b(x, t) = -x
-#     D(x, t) = Float32(0.1)
-#     xs = reshape(Float32[-1  0  1 -1  0  1 -1  0  1;
-#     -1 -1 -1  0  0  0  1  1  1], d, N, num_samples);
-#     s = Chain(
-#       Dense(d => 50, relu),
-#       Dense(50 => d))
-#     print("Initializing s...")
-#     initialize_s!(s, MvNormal(zeros(d), I(d)), xs, ε = 10^-2)
-#     xs, Δts, b, D, s
-# end

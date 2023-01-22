@@ -6,7 +6,7 @@ include("utils.jl")
 plotly()
 
 # reconstruct the initial parameters
-function initial_params(N, num_samples, num_timestamps, seed = N*num_samples*num_timestamps)
+function initial_params(N, num_samples, num_timestamps; seed = N*num_samples*num_timestamps)
     seed!(seed)
     d_bar = 2
     xs, Δts, b, D, ρ₀, target, a, w, α, β = moving_trap(N, num_samples, num_timestamps)
@@ -14,16 +14,17 @@ function initial_params(N, num_samples, num_timestamps, seed = N*num_samples*num
     xs, Δts, b, D, ρ₀, target, a, w, α, β, ts, d_bar
 end
 
-# solve analyticly
-function solve_analytically()
+### ANALYTICAL ###
+function solve_analytically(N, num_samples, num_timestamps)
+    xs, Δts, b, D, ρ₀, target, a, w, α, β, ts, d_bar = initial_params(N, num_samples, num_timestamps)
     println("Solving analytically")
     tspan = (0f0, sum(Δts))
     p = (α, size(xs, 2), t -> D(xs, t), β) # assumes D is constant in space
     initial = ComponentVector(m = mean(ρ₀), Cd = cov(ρ₀), Co = zeros(eltype(xs), 2, 2))
     function f!(dcov, cov, p, t :: T) where T
-        α, N, D, β = p
+        α, N, D_, β = p
         dcov.m = β(t) - cov.m
-        dcov.Cd = T(2)*(α-one(T))*cov.Cd - T(2)*α/N*(cov.Cd + (N-1)*cov.Co) + T(2)*D(t)*I
+        dcov.Cd = T(2)*(α-one(T))*cov.Cd - T(2)*α/N*(cov.Cd + (N-1)*cov.Co) + T(2)*D_(t)*I
         dcov.Co = T(2)*(α-one(T))*cov.Co - T(2)*α/N*(cov.Cd + (N-1)*cov.Co)
     end
     analytic_solution = solve(ODEProblem(f!, initial, tspan, p), saveat = ts)
@@ -31,68 +32,54 @@ function solve_analytically()
     return analytic_solution, ρ
 end
 
-function analytic_score(analytic_solution, time_index, x)
-    # NOTE: assumes the initial covariance matrix is scalar*I
-    u = analytic_solution[time_index]
-    @assert u.Cd[1,1] == u.Cd[2,2]
-    @assert isdiag(u.Cd)
-    @assert isdiag(u.Co)
-    σ² = u.Cd[1,1] # variance
-    m = u.m
-    return σ² .* (x .- m)
+function analytic_entropies(ρ, ts)
+    [size(ρ(t))[1]/2*(log(2*π) + 1) + 1/2*log(det(cov(ρ(t)))) for t in ts]
 end
 
-function analytic_entropy(t)
-    d, = size(ρ(t))
-    return d/2*(log(2*π) + 1) + 1/2*log(det(cov(ρ(t))))
-end
-
-function empirical_entropy(ε, flat_xs :: AbstractArray{T, 2}) where T
-    d, n = size(flat_xs)
-    return -sum( log(Mol(ε, x, flat_xs)/n) for x in eachslice(flat_xs, dims=2) )/n
-end
-
-"empirical marginal pdf at point x ∈ R²"
-function empirical_marginal(ε, x, xs :: AbstractArray{T, 3}) where T
-    Mol(ε, x, xs[:,1,:])/size(xs, 3)
+function analytic_moments(ρ, ts)
+    m = [mean(ρ(t)) for t in ts]
+    C = [cov(ρ(t)) for t in ts]
+    m, C
 end
 
 "analytic marginal pdf at points xs"
 function analytic_marginals(xs, time_index, analytic_solution)
-    d_bar = length(first(xs))
+    d_bar = 2
     sol = analytic_solution[time_index]
     marginal_dist = MvNormal(sol.m, I(d_bar)*(sol.Cd - sol.Co)[1] + ones(d_bar, d_bar)*sol.Co[1])
     pdf(marginal_dist, xs)
 end
 
-# empirical statistics
+### EMPIRICAL ###
+function empirical_entropies(ε, trajectories)
+    d_bar, N, n, _ = size(trajectories)
+    flat_trajectories = reshape(trajectories, d_bar*N, n, :)
+    [-sum( log(Mol(ε, x, flat_xs)/n) for x in eachslice(flat_xs, dims=2) )/n for flat_xs in eachslice(flat_trajectories, dims=3)]
+end
+
+"empirical marginal pdf at point x ∈ R²"
+function empirical_marginal(ε, x, xs :: AbstractArray{T, 3}) where T
+    Mol(ε, x, (@view xs[:,1,:]))/size(xs, 3)
+end
+
 empirical_first_moment(flat_xs :: AbstractArray{T, 2}) where T = vec(mean(flat_xs, dims = 2))
 empirical_second_moment(flat_xs :: AbstractArray{T, 2}) where T = flat_xs * flat_xs' / (size(flat_xs, 2) - 1)
 empirical_covariance(flat_xs :: AbstractArray{T, 2}) where T = empirical_second_moment(flat_xs .- empirical_first_moment(flat_xs))
 
-function moment_analysis(trajectories)
+function empirical_moments(trajectories)
+    d_bar, N, num_samples, _ = size(trajectories)
     flat_trajectories = reshape(trajectories, d_bar*N, num_samples, :)
     expectations = [empirical_first_moment(flat_xs) for flat_xs in eachslice(flat_trajectories, dims=3)]
     covariances = [empirical_covariance(flat_xs) for flat_xs in eachslice(flat_trajectories, dims=3)]
-    analytic_expectations = [mean(ρ(t)) for t in ts]
-    analytic_covariances = [cov(ρ(t)) for t in ts]
-    expectation_errors = [norm(expectation - analytic_expectation) for (expectation, analytic_expectation) in zip(expectations, analytic_expectations)]
-    covariance_errors = [tr(cov - analytic_cov) for (cov, analytic_cov) in zip(covariances, analytic_covariances)]
-    expectations, analytic_expectations, expectation_errors, covariances, analytic_covariances, covariance_errors
+    expectations, covariances
 end
 
-function entropy_analysis(trajectories, ε)
-    flat_trajectories = reshape(trajectories, d_bar*N, num_samples, :)
-    entropies = [empirical_entropy(ε, flat_xs) for flat_xs in eachslice(flat_trajectories, dims=3)]
-    analytic_entropies = [analytic_entropy(t) for t in ts]
-    entropies, analytic_entropies
-end
-
-function make_plots(trajectories, labels; ε_entropy = 1.24, ε_marginal = 0.15)
+function make_plots(trajectories, labels, analytic_solution, ρ; ε_entropy = 1.24, ε_marginal = 0.15)
     println("Making plots")
-    d_bar, N, num_samples, num_timestamps = size(trajectories[1])
-    _, analytic_expectations, _, _, analytic_covariances, _  = moment_analysis(trajectories[1])
-    _, analytic_entropies = entropy_analysis(trajectories[1], ε_entropy)
+    d_bar, N, num_samples, _ = size(trajectories[1])
+    _, Δts, b, D, ρ₀, target, a, w, α, β, ts, _ = initial_params(N, num_samples, size(trajectories[1], 4)-1)
+    analytic_expectations, analytic_covariances = analytic_moments(ρ, ts)
+    analytic_entropies_ = analytic_entropies(ρ, ts)
 
     # for heatmap plotting
     range = -3:0.1:3
@@ -113,11 +100,11 @@ function make_plots(trajectories, labels; ε_entropy = 1.24, ε_marginal = 0.15)
     plot!(p3, ts, norm.(analytic_covariances, 1), label = nothing)
 
     p4 = plot(title = "entropy comparison", ylabel = "entropy")
-    plot!(p4, ts, analytic_entropies, label = nothing)
+    plot!(p4, ts, analytic_entropies_, label = nothing)
 
     for (j, trajectory) in enumerate(trajectories)
-        expectations, _, _, covariances, analytic_covariances, _ = moment_analysis(trajectory)
-        entropies, _ = entropy_analysis(trajectory, ε_entropy)
+        expectations, covariances = empirical_moments(trajectory)
+        entropies = empirical_entropies(ε_entropy, trajectory)
 
         plot!(p1, ts, norm.(expectations), label = "$(labels[j])")
         plot!(p2, ts, tr.(covariances), label = nothing)
@@ -158,9 +145,22 @@ function sbtm_vs_jhu_experiment(N, num_samples, num_timestamps)
     trajectories = [sbtm_trajectories, jhu_trajectories]
     labels = ["sbtm", "jhu"]
 
-    global xs, Δts, b, D, ρ₀, target, a, w, α, β, ts, d_bar = initial_params(N, num_samples, num_timestamps)
-    global analytic_solution, ρ = solve_analytically()
-    stats_plot, heatmap_plot = make_plots(trajectories, labels)
+    analytic_solution, ρ = solve_analytically(N, num_samples, num_timestamps)
+    stats_plot, heatmap_plot = make_plots(trajectories, labels, analytic_solution, ρ)
+end
+
+function sbtm_new_old_experiment(N, num_samples, num_timestamps)
+    println("Loading data for N = $N, num_samples = $num_samples, num_timestamps = $num_timestamps")
+    seed = N*num_samples*num_timestamps
+    data_sbtm_old = JLD2.load("old_new_sbtm/moving_trap_sbtm_$seed.jld2")
+    data_sbtm_new = JLD2.load("old_new_sbtm/moving_trap_sbtm_new_$seed.jld2")
+    sbtm_old_trajectories = data_sbtm_old["trajectories"]
+    sbtm_new_trajectories = data_sbtm_new["trajectories"]
+    trajectories = [sbtm_old_trajectories, sbtm_new_trajectories]
+    labels = ["sbtm_old", "sbtm_new"]
+
+    analytic_solution, ρ = solve_analytically(N, num_samples, num_timestamps)
+    stats_plot, heatmap_plot = make_plots(trajectories, labels, analytic_solution, ρ)
 end
 
 # no_drift_experiment
@@ -207,8 +207,10 @@ function print_mol_stats(xs, εs, b, D, t = 0.)
 end
 
 # assume N, num_samples, num_timestamps are already defined
-stats_plot, heatmap_plot = sbtm_vs_jhu_experiment(N, num_samples, num_timestamps)
+# stats_plot, heatmap_plot = sbtm_vs_jhu_experiment(N, num_samples, num_timestamps)
 
 # comparing the norms of drift and diffusion for different values of ε
 # εs = 2. .^(2:8) 
 # stats_plot = print_mol_stats(xs, εs, b, D)
+
+stats_plot, heatmap_plot = sbtm_new_old_experiment(N, num_samples, num_timestamps)

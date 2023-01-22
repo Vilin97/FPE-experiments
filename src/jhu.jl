@@ -26,5 +26,5 @@ function jhu_solve(xs, Δts :: AbstractVector{T}, b, D, ε) where T
         b(xs, t) - D(xs, t) * reshape(d1 + d2, d_bar, N, n) # b(xs, t) ~ 0.2
     end
     solution = solve(ODEProblem(f, initial, tspan), Euler(), saveat = ts, tstops = ts) # keep it vanilla for now
-    solution, cat(solution.u..., dims=4)
+    cat(solution.u..., dims=4), solution
 end
