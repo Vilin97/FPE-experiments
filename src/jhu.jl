@@ -1,5 +1,3 @@
-using Zygote
-
 include("utils.jl")
 
 # solve using DifferentialEquations
@@ -27,6 +25,7 @@ function jhu_solve(xs, Δts :: AbstractVector{T}, b, D, ε) where T
         d2 = reduce(hcat, g * (one(eltype(M)) ./ M)) # when ε == 0.14, this is ~10^-100. When ε == 10, this is ~0.01
         b(xs, t) - D(xs, t) * reshape(d1 + d2, d_bar, N, n) # b(xs, t) ~ 0.2
     end
-    solution = solve(ODEProblem(f, initial, tspan), Euler(), saveat = ts, tstops = ts) # keep it vanilla for now
+    ode_problem = ODEProblem(f, initial, tspan)
+    solution = solve(ode_problem, Euler(), saveat = ts, tstops = ts) # keep it vanilla for now
     cat(solution.u..., dims=4), solution
 end

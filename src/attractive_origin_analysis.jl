@@ -1,6 +1,6 @@
 # analyze the trajectories from the first example in the paper
 
-using DifferentialEquations, JLD2, Distributions, ComponentArrays, LinearAlgebra, Plots
+using JLD2, Distributions, Plots
 using Random: seed!
 include("utils.jl")
 plotly()
@@ -14,17 +14,30 @@ function initial_params(num_samples, num_timestamps; seed = num_samples*num_time
 end
 
 ### ANALYTICAL ###
+σ(ρ) = ρ |> cov |> det |> √
 analytic_entropies(ρ, ts) = entropy.(ρ.(ts))
-analytic_energies(ρ, ts) = analytic_entropies(ρ, ts) .+ ρ.(ts) .|> cov .|> det .|> √
+analytic_potentials(ρ, ts) = σ.(ρ.(ts))
+analytic_energies(ρ, ts) = analytic_entropies(ρ, ts) .- analytic_potentials(ρ, ts)
+analytic_mollified_entropies(ρ, ts, ε) = analytic_entropies(ρ, ts) + [ε/(σ + ε) + log(σ/(σ + ε)) for σ in σ.(ρ.(ts))]
+analytic_mollified_energies(ρ, ts, ε) = analytic_mollified_entropies(ρ, ts, ε) .- analytic_potentials(ρ, ts)
+
 analytic_moments(ρ, ts) = mean.(ρ.(ts)), cov.(ρ.(ts))
 analytic_marginals(xs, t, ρ) = pdf(ρ(t), xs)
-
 ### EMPIRICAL ###
 function empirical_entropies(ε, trajectories)
     d_bar, N, n, _ = size(trajectories)
     flat_trajectories = reshape(trajectories, d_bar*N, n, :)
     [-sum( log(Mol(ε, x, flat_xs)/n) for x in eachslice(flat_xs, dims=2) )/n for flat_xs in eachslice(flat_trajectories, dims=3)]
 end
+
+potential(x) = norm(x)^2/2
+function empirical_potentials(trajectories)
+    d_bar, N, n, _ = size(trajectories)
+    flat_trajectories = reshape(trajectories, d_bar*N, n, :)
+    [mean(potential(x) for x in eachslice(xs, dims=2)) for xs in eachslice(flat_trajectories, dims=3)]
+end
+
+empirical_energies(ε, trajectories) = empirical_entropies(ε, trajectories) .- empirical_potentials(trajectories)
 
 "empirical marginal pdf at point x ∈ R²"
 function empirical_marginal(ε, x, xs :: AbstractArray{T, 3}) where T
@@ -43,12 +56,12 @@ function empirical_moments(trajectories)
     expectations, covariances
 end
 
-function make_plots(trajectories, labels; ε_entropy = 1.24, ε_marginal = 0.15)
+function make_plots(trajectories, labels; ε_entropy = 0.14, ε_marginal = 0.14)
     println("Making plots")
     d_bar, N, num_samples, _ = size(trajectories[1])
     xs, Δts, b, D, ρ₀, ρ, ts = initial_params(num_samples, size(trajectories[1], 4)-1)
     analytic_expectations, analytic_covariances = analytic_moments(ρ, ts)
-    analytic_entropies_ = analytic_entropies(ρ, ts)
+    analytic_mollified_energies_ = analytic_mollified_energies(ρ, ts, ε_entropy)
 
     # for heatmap plotting
     range = -3:0.1:3
@@ -65,20 +78,16 @@ function make_plots(trajectories, labels; ε_entropy = 1.24, ε_marginal = 0.15)
     p2 = plot(title = "covariance trace comparison", ylabel = "covariance trace")
     plot!(p2, ts, tr.(analytic_covariances), label = nothing)
 
-    p3 = plot(title = "covariance norm comparison", ylabel = "covariance 1-norm")
-    plot!(p3, ts, norm.(analytic_covariances, 1), label = nothing)
-
-    p4 = plot(title = "entropy comparison", ylabel = "entropy")
-    plot!(p4, ts, analytic_entropies_, label = nothing)
+    p3 = plot(title = "energy comparison", ylabel = "mollified energy")
+    plot!(p3, ts, analytic_mollified_energies_, label = nothing)
 
     for (j, trajectory) in enumerate(trajectories)
         expectations, covariances = empirical_moments(trajectory)
-        entropies = empirical_entropies(ε_entropy, trajectory)
+        energies = empirical_energies(ε_entropy, trajectory)
 
         plot!(p1, ts, norm.(expectations), label = "$(labels[j])")
         plot!(p2, ts, tr.(covariances), label = nothing)
-        plot!(p3, ts, norm.(covariances, 1), label = nothing)
-        plot!(p4, ts, entropies, label = nothing)
+        plot!(p3, ts, energies, label = nothing)
         
         empirical_marginals = [[empirical_marginal(ε_marginal, [x...], xs) for x in x_grid] for xs in collect(eachslice(trajectory, dims=4))[time_indices]]
         
@@ -86,8 +95,8 @@ function make_plots(trajectories, labels; ε_entropy = 1.24, ε_marginal = 0.15)
             heatmaps[j+1, i] = heatmap(range, range, empirical_marginals[i]', title = "marginal at t = $(round(t, digits = 2)), $(labels[j])")
         end
     end
-    heatmap_plot = plot(heatmaps..., layout = (size(heatmaps, 2), size(heatmaps, 1)), size = (2000, 1300))
-    stats_plot = plot(p1, p2, p3, p4, layout = (4, 1), size = (1000, 1500))
+    heatmap_plot = plot(heatmaps..., layout = (size(heatmaps, 2), size(heatmaps, 1)), size = (1000, 1500))
+    stats_plot = plot(p1, p2, p3, layout = (3, 1), size = (1000, 1500))
     stats_plot, heatmap_plot
 end
 
@@ -108,3 +117,5 @@ end
 
 # assume num_samples, num_timestamps are already defined
 stats_plot, heatmap_plot = sbtm_vs_jhu_experiment(num_samples, num_timestamps)
+
+plot(stats_plot, heatmap_plot, layout = (2, 1), size = (1000, 1500))

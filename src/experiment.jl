@@ -88,7 +88,7 @@ end
 
 function attractive_origin_experiment_combined(num_samples, num_timestamps; folder = "data")
     attractive_origin_experiment(num_samples, num_timestamps, sbtm, "sbtm"; folder = folder)
-    attractive_origin_experiment(num_samples, num_timestamps, jhu, "jhu"; folder = folder)
+    attractive_origin_experiment(num_samples, num_timestamps, jhu, "jhu"; folder = folder, ε = 0.14)
 end
 
 function attractive_origin_experiment(num_samples, num_timestamps, method, method_name; folder = "data", kwargs...)
@@ -105,18 +105,17 @@ function attractive_origin_experiment(num_samples, num_timestamps, method, metho
         "trajectories", trajectories,
         "kwargs", kwargs,
         "seed", seed,
-        "N", N,
         "num_samples", num_samples,
         "num_timestamps", num_timestamps)
 
     println("Done with saving for $method_name")
 end
 
-N=50
-num_samples=100
-num_timestamps=200
-moving_trap_experiment_sbtm_old_new(N, num_samples, num_timestamps, folder = "old_new_sbtm")
-
+# N=50
 # num_samples=100
 # num_timestamps=200
-# attractive_origin_experiment_combined(num_samples, num_timestamps, folder = "data")
+# moving_trap_experiment_sbtm_old_new(N, num_samples, num_timestamps, folder = "old_new_sbtm")
+
+num_samples=1000
+num_timestamps=300
+attractive_origin_experiment_combined(num_samples, num_timestamps, folder = "data")
