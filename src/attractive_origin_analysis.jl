@@ -14,18 +14,10 @@ function initial_params(num_samples, num_timestamps; seed = num_samples*num_time
 end
 
 ### ANALYTICAL ###
-function analytic_entropies(ρ, ts)
-    entropy.(ρ.(ts))
-end
-
-function analytic_moments(ρ, ts)
-    mean.(ρ.(ts)), cov.(ρ.(ts))
-end
-
-"analytic marginal pdf at points xs"
-function analytic_marginals(xs, t, ρ)
-    pdf(ρ(t), xs)
-end
+analytic_entropies(ρ, ts) = entropy.(ρ.(ts))
+analytic_energies(ρ, ts) = analytic_entropies(ρ, ts) .+ ρ.(ts) .|> cov .|> det .|> √
+analytic_moments(ρ, ts) = mean.(ρ.(ts)), cov.(ρ.(ts))
+analytic_marginals(xs, t, ρ) = pdf(ρ(t), xs)
 
 ### EMPIRICAL ###
 function empirical_entropies(ε, trajectories)

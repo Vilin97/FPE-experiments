@@ -208,7 +208,4 @@ function print_mol_stats(N, num_samples, num_timestamps, t = 0.)
     # plot!(pl2, εs, repeat([norm(drift, Inf)/N], length(εs)), label = nothing)
 end
 
-print_mol_stats(N, num_samples, num_timestamps)
-
-
-# stats_plot, heatmap_plot = sbtm_vs_jhu_experiment(N, num_samples, num_timestamps)
+stats_plot, heatmap_plot = sbtm_new_old_experiment(N, num_samples, num_timestamps)

@@ -61,27 +61,23 @@ function moving_trap_experiment_sbtm_old_new(N, num_samples, num_timestamps; fol
     println("Done with initial setup for sbtm.")
 
     s = initialize_s(ρ₀, xs, 100, 1)
+    # seed!(seed)
+    # (old_sbtm_trajectories, _), t = @timed sbtm(xs, Δts, b, D; ρ₀ = ρ₀, s=s)
+    # println("Done with old sbtm. Took $t seconds.")
+    
     seed!(seed)
-    (new_sbtm_trajectories, losses, s_values, _), t = @timed sbtm_solve1(xs, Δts, b, D, s)
+    (new_sbtm_trajectories, _), t = @timed sbtm(xs, Δts, b, D; ρ₀ = ρ₀, s=s)
     println("Done with new sbtm. Took $t seconds.")
 
-    seed!(seed)
-    (old_sbtm_trajectories, losses, s_values), t = @timed sbtm(xs, Δts, b, D, s)
-    println("Done with old sbtm. Took $t seconds.")
-
-    JLD2.save("$(folder)/moving_trap_sbtm_$seed.jld2", 
-        "trajectories", old_sbtm_trajectories, 
-        "losses", losses, 
-        "s_values", s_values, 
-        "seed", seed,
-        "N", N,
-        "num_samples", num_samples,
-        "num_timestamps", num_timestamps)
+    # JLD2.save("$(folder)/moving_trap_sbtm_$seed.jld2", 
+    #     "trajectories", old_sbtm_trajectories, 
+    #     "seed", seed,
+    #     "N", N,
+    #     "num_samples", num_samples,
+    #     "num_timestamps", num_timestamps)
 
     JLD2.save("$(folder)/moving_trap_sbtm_new_$seed.jld2", 
         "trajectories", new_sbtm_trajectories, 
-        "losses", losses, 
-        "s_values", s_values, 
         "seed", seed,
         "N", N,
         "num_samples", num_samples,
@@ -119,8 +115,8 @@ end
 N=50
 num_samples=100
 num_timestamps=200
-# moving_trap_experiment_combined(N, num_samples, num_timestamps, folder = "data")
+moving_trap_experiment_sbtm_old_new(N, num_samples, num_timestamps, folder = "old_new_sbtm")
 
-num_samples=100
-num_timestamps=200
-attractive_origin_experiment_combined(num_samples, num_timestamps, folder = "data")
+# num_samples=100
+# num_timestamps=200
+# attractive_origin_experiment_combined(num_samples, num_timestamps, folder = "data")
