@@ -1,9 +1,8 @@
 include("utils.jl")
 
-# solve using DifferentialEquations
 using DifferentialEquations
 
-function jhu(xs, Δts, b, D; ε = 1/π, ρ₀)
+function jhu(xs, Δts, b, D; ε = 1/π, ρ₀ = nothing)
     T = typeof(ε)
     trajectories, solution = jhu_solve(T.(xs), T.(Δts), b, D, ε)
     trajectories, solution

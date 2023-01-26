@@ -57,7 +57,7 @@ D   : Rᵈ × R → Rᵈˣᵈ or R
 n   : number of particles
 s   : NN to approximate score ∇log ρ
 """
-function sbtm(xs, Δts, b, D; ρ₀, s = nothing, kwargs...)
+function sbtm(xs, Δts, b, D; ρ₀ = nothing, s = nothing, kwargs...)
     isnothing(s) && (s = initialize_s(ρ₀, xs, 100, 1))
     ts = Float32.(vcat(0., cumsum(Δts)))
     trajectories, losses, s_values, solution = sbtm_solve(Float32.(xs), Float32.(ts), b, D, deepcopy(s); kwargs...)
