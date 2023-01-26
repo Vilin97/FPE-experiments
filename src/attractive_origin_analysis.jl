@@ -23,6 +23,7 @@ analytic_mollified_energies(ρ, ts, ε) = analytic_mollified_entropies(ρ, ts, �
 
 analytic_moments(ρ, ts) = mean.(ρ.(ts)), cov.(ρ.(ts))
 analytic_marginals(xs, t, ρ) = pdf(ρ(t), xs)
+
 ### EMPIRICAL ###
 function empirical_entropies(ε, trajectories)
     d_bar, N, n, _ = size(trajectories)
