@@ -105,7 +105,6 @@ end
 function sbtm_vs_jhu_experiment(num_samples, num_timestamps)
     println("Loading data for num_samples = $num_samples, num_timestamps = $num_timestamps")
     seed = num_samples*num_timestamps
-    seed!(seed)
     data_jhu = JLD2.load("data/attractive_origin_jhu_$seed.jld2")
     data_sbtm = JLD2.load("data/attractive_origin_sbtm_$seed.jld2")
     jhu_trajectories = data_jhu["trajectories"]
@@ -114,9 +113,26 @@ function sbtm_vs_jhu_experiment(num_samples, num_timestamps)
     labels = ["sbtm", "jhu"]
 
     stats_plot, heatmap_plot = make_plots(trajectories, labels)
+    plot(stats_plot, heatmap_plot, layout = (2, 1), size = (1000, 1500))
+end
+
+function plot_energy_rate(num_samples, num_timestamps)
+    seed = num_samples*num_timestamps
+    data_jhu = JLD2.load("data/attractive_origin_jhu_$seed.jld2")
+    sol = data_jhu["solution"];
+    jhu_trajectories = data_jhu["trajectories"]
+    ε = 1/π
+    _, _, _, _, _, ρ, ts = initial_params(num_samples, num_timestamps)
+    Δt = sol.t[2] - sol.t[1]
+    dv_dt_norms = sol.prob.p
+    dv_dt_dif_quotient_norms = [norm((sol.u[i+1]-sol.u[i]) ./ (Δt))^2/num_samples for i in 2:length(sol.u)-1]
+    energies = empirical_energies(ε, jhu_trajectories)
+    analytic_mollified_energies_ = analytic_mollified_energies(ρ, ts, ε)
+    dE_dt_analytic = [(analytic_mollified_energies_[i+1] - analytic_mollified_energies_[i]) / Δt for i in 2:length(analytic_mollified_energies_)-1]
+    dE_dt = [(energies[i+1] - energies[i]) / Δt for i in 2:length(energies)-1]
+    plot(sol.t[2:end-1], [(dv_dt_norms./num_samples)[2:end-1] dv_dt_dif_quotient_norms dE_dt dE_dt_analytic], label=["mean dv_dt_norm" "mean dv difference quotient norm" "energy difference quotient" "analytic energy difference quotient"], xlabel = "time", title = "energy vs dv_dt norms")
 end
 
 # assume num_samples, num_timestamps are already defined
-stats_plot, heatmap_plot = sbtm_vs_jhu_experiment(num_samples, num_timestamps)
-
-plot(stats_plot, heatmap_plot, layout = (2, 1), size = (1000, 1500))
+plot_energy_rate(num_samples, num_timestamps)
+# sbtm_vs_jhu_experiment(num_samples, num_timestamps)

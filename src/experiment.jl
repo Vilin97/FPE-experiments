@@ -98,11 +98,12 @@ function attractive_origin_experiment(num_samples, num_timestamps, method, metho
 
     println("Done with initial setup for $method_name.")
 
-    (trajectories, _), t = @timed method(xs, Δts, b, D; ρ₀ = ρ₀, kwargs...)
+    (trajectories, solution), t = @timed method(xs, Δts, b, D; ρ₀ = ρ₀, kwargs...)
     println("Done with $method_name. Took $t seconds.")
 
     JLD2.save("$(folder)/attractive_origin_$(method_name)_$seed.jld2", 
         "trajectories", trajectories,
+        "solution", solution,
         "kwargs", kwargs,
         "seed", seed,
         "num_samples", num_samples,
@@ -116,6 +117,7 @@ end
 # num_timestamps=200
 # moving_trap_experiment_sbtm_old_new(N, num_samples, num_timestamps, folder = "old_new_sbtm")
 
-num_samples=1000
+num_samples=100
 num_timestamps=300
-attractive_origin_experiment_combined(num_samples, num_timestamps, folder = "data")
+# attractive_origin_experiment_combined(num_samples, num_timestamps, folder = "data")
+attractive_origin_experiment(num_samples, num_timestamps, jhu, "jhu"; folder = "data", ε = 1/π)
