@@ -136,14 +136,3 @@ end
 # assume num_samples, num_timestamps are already defined
 # plot_energy_rate(num_samples, num_timestamps)
 # sbtm_vs_jhu_experiment(num_samples, num_timestamps)
-
-using DiffEqCallbacks
-dt = 0.01
-saved_values = SavedValues(Float64, Float64)
-cb = SavingCallback((u,t,integrator)->f(u, integrator.p, t), saved_values, saveat = 0:dt:10)
-f(u,p,t) = 1.01*u
-prob = ODEProblem(f, 1., (0., 10.))
-sol = solve(prob, Euler(), dt=dt, saveat = 0:dt:10, callback=cb)
-
-dif_quotients = [(sol.u[i+1]-sol.u[i]) / dt for i in 1:length(sol.u)-1]
-plot(sol.t[1:end-1], [saved_values.saveval[1:end-1] dif_quotients], label=["du_dt" "difference quotient"])
