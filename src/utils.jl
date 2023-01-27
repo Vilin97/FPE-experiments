@@ -5,6 +5,7 @@ using Distributions: MvNormal
 mol(ε, x) = exp(-norm(x)^2/ε)/sqrt((π*ε)^length(x)) # = pdf(MvNormal(ε/2*I(length(x))), x)
 grad_mol(ε, x) = -2/ε*mol(ε, x) .* x
 Mol(ε, x, xs) = sum( mol(ε, x - x_q) for x_q in eachslice(xs, dims=length(size(xs))) )
+Mol(ε, x, xs :: AbstractVector) = sum( mol(ε, x - x_q) for x_q in xs )
 
 function moving_trap(N, num_samples, num_timestamps)
     d = 2 # dimension of each particle
@@ -14,7 +15,6 @@ function moving_trap(N, num_samples, num_timestamps)
     Δts = Float32(0.01)*ones(Float32, num_timestamps) # time increments
       
     # define drift vector field b and diffusion matrix D
-    # β(t) = a*[cos(π*w*0f0), sin(π*w*0f0)] # no-drift case
     β(t) = a*[cos(π*w*t), sin(π*w*t)]
     function b(x, t)
         attract = β(t) .- x

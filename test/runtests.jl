@@ -5,7 +5,7 @@ include("../src/sbtm.jl")
 
 # no-diffusion test
 function no_diffusion_test()
-    seed!(1234)
+    Random.seed!(1234)
     b(x,t) = x
     D(x,t) = zero(eltype(x))
     x0 = 1.0
@@ -24,6 +24,3 @@ function no_diffusion_test()
     solution = extras["solution"]
     @test first.(solution.u) ≈ [ρ(t) for t in solution.t] rtol = rtol
 end
-
-# no-drift test
-# TODO
