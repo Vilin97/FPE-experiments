@@ -9,27 +9,32 @@ b(x,t) = zero(x)
 D(x,t) = 1.0
 ρ(t) = Normal(0., sqrt(2. * (t+1.)))
 ρ₀ = ρ(0.)
-n = 100
+n = 40^2
 xs = rand(ρ₀, 1, 1, n)
-dt = 0.01
-tspan = (0.0, 6.0)
+dt = 0.005
+tspan = (0.0, 0.5)
 ts = tspan[1]:dt:tspan[2]
 num_ts = Int(tspan[2]/dt)
 Δts = repeat([dt], num_ts)
 
-ε = 0.1
-_, solution_jhu = jhu(xs, Δts, b, D; ε = ε)
-_, extras = sbtm(xs, Δts, b, D; ρ₀ = MvNormal(2. * I(1)), optimiser = Adam(10^-2))
+ε = 0.053
+println("Solving jhu with ε = $ε")
+@timed (_, solution_jhu), t = jhu(xs, Δts, b, D; ε = ε)
+println("Took $t seconds")
+println("Solving sbtm")
+@timed (_, extras), t = sbtm(xs, Δts, b, D; ρ₀ = MvNormal(2. * I(1)), optimiser = Adam(10^-2))
+println("Took $t seconds")
 solution_sbtm = extras["solution"]
 
+reconstruct_pdf(ε, x, u) = Mol(ε, x, u)/length(u)
+
 function pdf_plots(solutions, labels, true_solution, t)
-    plt = plot(title = "t = $(round(t, digits = 2))", xlabel = "x", ylabel = "pdf(x)", ylim = (0, 0.5))
-    pdf_range = range(-10, 10, length=100)
+    plt = plot(title = "t = $(round(t, digits = 2)), #particles = $n", xlabel = "x", ylabel = "pdf(x)", ylim = (0, 0.5))
+    pdf_range = range(-6, 6, length=100)
     for (solution, label) in zip(solutions, labels)
         u = reshape(solution(t), :)
-        dist = fit_mle(Normal, u)
         label_ = t == 0.0 ? label : nothing
-        plot!(plt, pdf_range, pdf.(dist, pdf_range), label = label_)
+        plot!(plt, pdf_range, [reconstruct_pdf(ε, x, u) for x in pdf_range], label = label_)
     end
     label_ = t == 0.0 ? "true" : nothing
     plot!(plt, pdf_range, pdf.(true_solution(t), pdf_range), label = label_)
@@ -59,6 +64,6 @@ plots = []
 for t in range(tspan[1], tspan[2], length=12)
     push!(plots, pdf_plots([solution_jhu, solution_sbtm], ["jhu, eps=$ε", "sbtm"], ρ, t))
 end
-entplot = entropy_plot([solution_jhu, solution_sbtm], ["jhu, eps=$ε", "sbtm"], ρ, ts)
-# pdf_plot = plot(plots..., size = (1500, 1000))
+# entplot = entropy_plot([solution_jhu, solution_sbtm], ["jhu, eps=$ε", "sbtm"], ρ, ts)
+pdf_plot = plot(plots..., size = (1500, 1000))
 # big_plot = plot(entplot, pdf_plot, layout = (2, 1), size = (1800, 1000))

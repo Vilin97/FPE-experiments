@@ -1,6 +1,6 @@
 include("utils.jl")
 
-using DifferentialEquations
+using DifferentialEquations, LoopVectorization
 
 function jhu(xs, Δts, b, D; ε = 1/π, ρ₀ = nothing)
     T = typeof(ε)
@@ -8,28 +8,42 @@ function jhu(xs, Δts, b, D; ε = 1/π, ρ₀ = nothing)
     trajectories, solution
 end
 
-function jhu_solve(xs, Δts :: AbstractVector{T}, b, D, ε) where T
+function f!(dxs, xs, pars, t)
+    (ε, n, d, diff_norm2s, mol_sum, term1, term2, mols, b, D, d_bar) = pars
+    mol_sum .= zero(ε)
+    diff_norm2s .= zero(ε)
+    term1 .= zero(ε)
+    term2 .= zero(ε)
+    @tturbo for p in 1:n, q in 1:n, k in 1:d
+        diff_norm2s[p, q] += (xs[k, p] - xs[k, q])^2
+    end
+    @tturbo for p in 1:n, q in 1:n
+        mols[p, q] = exp(-diff_norm2s[p, q]/ε)/sqrt((π*ε)^d)
+        mol_sum[p] += mols[p, q]
+    end
+    @tturbo for p in 1:n, q in 1:n, k in 1:d
+        fac = -2. / ε * mols[p, q]
+        diff_k = xs[k, p] - xs[k, q]
+        term1[k, p] += fac * diff_k / mol_sum[p]
+        term2[k, p] += fac * diff_k / mol_sum[q]
+    end
+    dxs .= -D(xs,t) .* term1 .+ term2 .+ reshape(b(reshape(xs, d_bar, :, n), t), d, n)
+end
+
+function jhu_solve(xs, Δts :: AbstractVector{T}, b, D, ε :: T) where T
     tspan = (zero(T), sum(Δts))
     ts = vcat(zero(T), cumsum(Δts))
-    initial = xs
     d_bar, N, n = size(xs)
-    dv_dt_norms = zeros(T, size(ts))
-    # k = 0
-    function f(xs, dv_dt_norms, t)
-        # k += 1
-        flat_xs = reshape(xs, d_bar*N, n)
-        xps = eachslice(flat_xs, dims=2)
-        m = [mol(ε, x_p - x_q) for x_q in xps, x_p in xps]
-        g = [grad_mol(ε, x_p-x_q) for x_q in xps, x_p in xps]
-        M = reshape(sum(m, dims=1), :)
-        G = reshape(sum(g, dims=1), :)
-        d1 = reduce(hcat, G ./ M)
-        d2 = reduce(hcat, g * (one(eltype(M)) ./ M))
-        dv_dt = b(xs, t) - D(xs, t) * reshape(d1 + d2, d_bar, N, n)
-        # dv_dt_norms[k] = norm(dv_dt)
-        dv_dt
-    end
-    ode_problem = ODEProblem(f, initial, tspan, dv_dt_norms)
-    solution = solve(ode_problem, saveat = ts)
+    d = d_bar * N
+    initial = reshape(xs, d, n)
+    diff_norm2s = zeros(T, n, n)
+    AA = zeros(T, n)
+    term1 = zeros(T, d, n)
+    term2 = zeros(T, d, n)
+    mols = zeros(T, n, n)
+    pars = (ε, n, d, diff_norm2s, AA, term1, term2, mols, b, D, d_bar)
+    
+    ode_problem = ODEProblem(f!, initial, tspan, pars)
+    solution = solve(ode_problem, saveat = ts, alg = Euler(), tstops = ts)
     cat(solution.u..., dims=4), solution
 end
