@@ -1,4 +1,4 @@
-using Test, Distributions, Plots
+using Test, Distributions, Plots, TimerOutputs
 using Random: seed!
 plotly()
 include("../src/jhu.jl")
@@ -18,12 +18,10 @@ num_ts = Int(tspan[2]/dt)
 Δts = repeat([dt], num_ts)
 
 ε = 0.053
-println("Solving jhu with ε = $ε")
-@timed (_, solution_jhu), t = jhu(xs, Δts, b, D; ε = ε)
-println("Took $t seconds")
-println("Solving sbtm")
-@timed (_, extras), t = sbtm(xs, Δts, b, D; ρ₀ = MvNormal(2. * I(1)), optimiser = Adam(10^-2))
-println("Took $t seconds")
+reset_timer!()
+@timeit "jhu" _, solution_jhu = jhu(xs, Δts, b, D; ε = ε)
+@timeit "sbtm" _, extras = sbtm(xs, Δts, b, D; ρ₀ = MvNormal(2. * I(1)), optimiser = Adam(10^-2))
+print_timer()
 solution_sbtm = extras["solution"]
 
 reconstruct_pdf(ε, x, u) = Mol(ε, x, u)/length(u)
@@ -48,22 +46,20 @@ function empirical_entropy(ε, u :: AbstractVector)
 end
 empirical_entropies(ε, u) = empirical_entropy.(ε, u)
 function entropy_plot(solutions, labels, true_solution, ts)
-    print("Plotting entropy")
     plt = plot(title = "entropy comparison", xlabel = "t", ylabel = "entropy", size = (1000, 300))
     anal_ent = analytic_entropies(true_solution, ts)
-    true_sample_entropy = mean(empirical_entropies(ε, [rand(true_solution(t), n) for t in ts]) for _ in 1:100)
     for (solution, label) in zip(solutions, labels)
         emp_ent = empirical_entropies(ε, reshape.(solution(ts).u, :))
         plot!(plt, ts, emp_ent, label = label)
     end
     plot!(plt, ts, anal_ent, label = "true entropy")
-    plot!(plt, ts, true_sample_entropy, label = "true sample entropy")
 end
 
 plots = []
 for t in range(tspan[1], tspan[2], length=12)
     push!(plots, pdf_plots([solution_jhu, solution_sbtm], ["jhu, eps=$ε", "sbtm"], ρ, t))
 end
-# entplot = entropy_plot([solution_jhu, solution_sbtm], ["jhu, eps=$ε", "sbtm"], ρ, ts)
-pdf_plot = plot(plots..., size = (1500, 1000))
-# big_plot = plot(entplot, pdf_plot, layout = (2, 1), size = (1800, 1000))
+entplot = entropy_plot([solution_jhu, solution_sbtm], ["jhu, eps=$ε", "sbtm"], ρ, ts)
+pdf_plot = plot(plots..., size = (1400, 900))
+big_plot = plot(entplot, pdf_plot, layout = (2, 1), size = (1800, 1000))
+pdf_plot;

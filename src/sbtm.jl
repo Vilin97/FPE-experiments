@@ -39,13 +39,11 @@ function initialize_s!(s, ρ₀, xs :: AbstractArray{T, 3}; optimiser = Adam(10^
     epoch
 end
 
-# approximate divergence of f at v
-function denoise(s, xs :: AbstractArray{T, 3}, ζ, α = T(0.1)) where T
-    ζ_ = reshape(rand(ζ), size(xs))
-    return ( sum(s(xs .+ α .* ζ_) .* ζ_) - sum(s(xs .- α .* ζ_) .* ζ_) ) / (T(2.)*α)
+function loss(s, xs :: AbstractArray{T, 3}, α = T(0.1)) where T
+    ζ = randn(size(xs))
+    denoise_val = ( dot(s(xs .+ α .* ζ), ζ) - dot(s(xs .- α .* ζ), ζ) ) / α
+    (norm(s(xs))^2 + denoise_val)/size(xs, 3)
 end
-
-loss(s, xs :: AbstractArray{T, 3}, ζ) where T =  (norm(s(xs))^2 + T(2.0)*denoise(s, xs, ζ))/size(xs, 3)
 score(ρ, x) = convert(eltype(x), sum(logpdf(ρ, x)))
 propagate(x, t, Δt, b, D, s) = x + Δt * (b(x, t) - D(x, t)*s(x))
 
@@ -65,7 +63,7 @@ function sbtm(xs, Δts, b, D; ρ₀ = nothing, s = nothing, kwargs...)
     trajectories, extras
 end
 
-function sbtm_solve(xs, ts :: AbstractVector{T}, b, D, s; epochs = 25, record_s_values = false, record_losses = false, verbose = 0, optimiser = Adam(10^-4), ode_alg = Euler()) where T
+function sbtm_solve(xs, ts :: AbstractVector{T}, b, D, s; epochs = 25, record_s_values = false, record_losses = false, verbose = 0, optimiser = Adam(10^-4)) where T
     tspan = (zero(T), ts[end])
     initial = xs
     s_values = zeros(T, size(xs)..., length(ts))
@@ -73,13 +71,12 @@ function sbtm_solve(xs, ts :: AbstractVector{T}, b, D, s; epochs = 25, record_s_
     losses = zeros(T, epochs, length(ts)-1)
     θ = params(s)
     k = 1
-    ζ = MvNormal(zeros(T, length(xs)), I(length(xs)))
     # train s_ in a callback
     function affect!(integrator)
         k += 1
         xs = integrator.u
         for epoch in 1:epochs
-            loss_value, grads = withgradient(() -> loss(s, xs, ζ), θ)
+            loss_value, grads = withgradient(() -> loss(s, xs), θ)
             Flux.update!(optimiser, θ, grads)
             record_losses && (losses[epoch, k] = loss_value)
             verbose > 1 && println("Epoch $epoch, loss = $loss_value.")
@@ -87,9 +84,11 @@ function sbtm_solve(xs, ts :: AbstractVector{T}, b, D, s; epochs = 25, record_s_
         record_s_values && (s_values[:, :, :, k] = s(xs))
     end
     cb = PresetTimeCallback(ts, affect!, save_positions=(false,false))
-    f(xs, p, t) = b(xs, t) - D(xs, t)*s(xs)
-    ode_problem = ODEProblem(f, initial, tspan)
-    solution = solve(ode_problem, ode_alg, saveat=ts, tstops = ts, callback = cb)
+    function f!(dxs, xs, p, t) 
+        dxs .= b(xs, t) .- D(xs, t) .* s(xs)
+    end
+    ode_problem = ODEProblem(f!, initial, tspan)
+    solution = solve(ode_problem, alg = Euler(), saveat=ts, tstops = ts, callback = cb)
     trajectories = cat(solution.u..., dims=4)
     trajectories, losses, s_values, solution
 end
