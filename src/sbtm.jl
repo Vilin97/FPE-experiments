@@ -69,15 +69,15 @@ function sbtm_solve(xs, ts :: AbstractVector{T}, b, D, s; epochs = 25, record_s_
     s_values = zeros(T, size(xs)..., length(ts))
     record_s_values && (s_values[:, :, :, 1] = s(xs))
     losses = zeros(T, epochs, length(ts)-1)
-    θ = params(s)
     k = 1
     # train s_ in a callback
     function affect!(integrator)
         k += 1
         xs = integrator.u
+        state = Flux.setup(optimiser, s)
         for epoch in 1:epochs
-            loss_value, grads = withgradient(() -> loss(s, xs), θ)
-            Flux.update!(optimiser, θ, grads)
+            loss_value, grads = withgradient(s -> loss(s, xs), s)
+            Flux.update!(state, s, grads[1])
             record_losses && (losses[epoch, k] = loss_value)
             verbose > 1 && println("Epoch $epoch, loss = $loss_value.")
         end

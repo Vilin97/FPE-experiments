@@ -33,7 +33,7 @@ function no_diffusion_test()
     @test first.(solution.u) ≈ [ρ(t) for t in solution.t] rtol = rtol
 end
 function diffusion_test()
-    seed!(1234)
+    Random.seed!(1234)
     reconstruct_pdf(ε, x, u :: AbstractMatrix) = Mol(ε, x, u)/size(u, 2)
 
     function L2_error(solution, true_solution, ε, t, d, n; h = 0.1)
