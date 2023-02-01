@@ -2,11 +2,6 @@ include("utils.jl")
 
 using DifferentialEquations, LoopVectorization
 
-# TODO refactor:
-# take ts instead of \Delta ts as input
-# output only solution
-# operate on (d, n) arrays instead of (d_bar, N, n) arrays
-
 function jhu(xs, Δts, b, D; ε = 1/π, ρ₀ = nothing)
     T = typeof(ε)
     trajectories, solution = jhu_solve(T.(xs), T.(Δts), b, D, ε)

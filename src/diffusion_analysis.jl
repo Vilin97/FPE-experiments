@@ -55,11 +55,28 @@ function entropy_plot(solutions, labels, true_solution, ts)
     plot!(plt, ts, anal_ent, label = "true entropy")
 end
 
+function l2_error_plot(solutions, labels, true_solution, ts)
+    plt = plot(title = "L2 error comparison, n = $(length(solutions[1][end]))", xlabel = "t", ylabel = "error", size = (1000, 300))
+    pdf_range = range(-6, 6, length=100)
+    for (solution, label) in zip(solutions, labels)
+        l2_errors = []
+        for t in ts
+            u = reshape(solution(t), :)
+            pdf_diff = [reconstruct_pdf(ε, x, u) for x in pdf_range] .- [pdf(true_solution(t), x) for x in pdf_range]
+            l2_error = norm(pdf_diff) * sqrt(step(pdf_range))
+            push!(l2_errors, l2_error)
+        end
+        plot!(plt, ts, l2_errors, label = label, marker = :circle)
+    end
+    plt
+end
+
 plots = []
 for t in range(tspan[1], tspan[2], length=12)
     push!(plots, pdf_plots([solution_jhu, solution_sbtm], ["jhu, eps=$ε", "sbtm"], ρ, t))
 end
-entplot = entropy_plot([solution_jhu, solution_sbtm], ["jhu, eps=$ε", "sbtm"], ρ, ts)
 pdf_plot = plot(plots..., size = (1400, 900))
-big_plot = plot(entplot, pdf_plot, layout = (2, 1), size = (1800, 1000))
-pdf_plot;
+entplot = entropy_plot([solution_jhu, solution_sbtm], ["jhu, eps=$ε", "sbtm"], ρ, ts)
+l2_plot = l2_error_plot([solution_jhu, solution_sbtm], ["jhu, eps=$ε", "sbtm"], ρ, range(tspan..., length = 10))
+big_plot = plot(entplot, l2_plot, pdf_plot, layout = (3, 1), size = (1800, 1000))
+l2_plot
