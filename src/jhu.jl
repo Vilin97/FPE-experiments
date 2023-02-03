@@ -2,7 +2,7 @@ include("utils.jl")
 
 using DifferentialEquations, LoopVectorization
 
-function jhu(xs, Δts, b, D; ε = 1/π, ρ₀ = nothing)
+function jhu(xs, Δts, b, D; ε = 1/π, kwargs...)
     T = typeof(ε)
     trajectories, solution = jhu_solve(T.(xs), T.(Δts), b, D, ε)
     trajectories, solution

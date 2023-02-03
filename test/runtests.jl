@@ -34,14 +34,6 @@ function no_diffusion_test()
 end
 function diffusion_test()
     Random.seed!(1234)
-    reconstruct_pdf(ε, x, u :: AbstractMatrix) = Mol(ε, x, u)/size(u, 2)
-
-    function L2_error(solution, true_solution, ε, t, d, n; h = 0.1)
-        pdf_range = [[x,y] for x in -3:h:3, y in -3:h:3]
-        u = reshape(solution(t), d, n)
-        pdf_diff = [reconstruct_pdf(ε, x, u) for x in pdf_range] .- [pdf(true_solution(t), x) for x in pdf_range]
-        l2_error = norm(pdf_diff) * sqrt(h^d)
-    end
 
     D(x,t) = 1.
     b(x,t) = zero(x)
