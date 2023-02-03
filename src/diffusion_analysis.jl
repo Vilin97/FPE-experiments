@@ -5,12 +5,12 @@ include("../src/utils.jl")
 include("../src/jhu.jl")
 include("../src/sbtm.jl")
 
-function solve_diffusion_1d(n)
+function solve_diffusion(d, n)
     seed!(1234)
-    xs, ts, Δts, b, D, ρ₀, ρ = diffusion_1d(n) 
+    xs, ts, Δts, b, D, ρ₀, ρ = pure_diffusion(d, n)
     ε = 0.053
     @timeit "jhu" _, solution_jhu = jhu(xs, Δts, b, D; ε = ε)
-    @timeit "sbtm" _, extras = sbtm(xs, Δts, b, D; ρ₀ = MvNormal(2. * I(1)), optimiser = Adam(10^-2))
+    @timeit "sbtm" _, extras = sbtm(xs, Δts, b, D; ρ₀ = ρ₀, optimiser = Adam(10^-2))
     solution_sbtm = extras["solution"]
 
     solution_jhu, solution_sbtm, ρ, ts, ε
@@ -79,16 +79,16 @@ function fixed_n_experiment(n = 1000)
     pdf_plot, ent_plot, l2_plot, big_plot
 end
 
-function L2_error_experiemnt()
+function L2_error_experiment(d = 1)
     jhu_errors = Float64[]
     sbtm_errors = Float64[]
-    ns = [50, 100, 200, 500, 1000, 2000, 4000, 6000, 8000]
+    ns = [50, 75, 100, 150, 200, 300, 500, 1000, 2000, 4000]
     reset_timer!()
     for n in ns
         @show n
-        @timeit "n = $n" solution_jhu, solution_sbtm, ρ, ts, ε = solve_diffusion_1d(n)
-        push!(jhu_errors, L2_error(solution_jhu, ρ, ε, ts[end], 1, n))
-        push!(sbtm_errors, L2_error(solution_sbtm, ρ, ε, ts[end], 1, n))
+        @timeit "n = $n" solution_jhu, solution_sbtm, ρ, ts, ε = solve_diffusion(d, n)
+        @timeit "L2_error_jhu" push!(jhu_errors, L2_error_cubature(solution_jhu, ρ, ε, ts[end], d, n))
+        @timeit "L2_error_sbtm" push!(sbtm_errors, L2_error_cubature(solution_sbtm, ρ, ε, ts[end], d, n))
     end
     print_timer()
     jhu_errors_log = log.(jhu_errors)
@@ -97,8 +97,13 @@ function L2_error_experiemnt()
     sbtm_fit_log = Polynomials.fit(log.(ns), sbtm_errors_log, 1)
     jhu_slope = round(jhu_fit_log.coeffs[2], digits = 2)
     sbtm_slope = round(sbtm_fit_log.coeffs[2], digits = 2)
-    l2_plot = plot(log.(ns), [jhu_errors_log sbtm_errors_log], label = ["jhu" "sbtm"], title = "1d diffusion L2 error, log-log", xlabel = "n = $ns", ylabel = "L2 error from true pdf", size = (1000, 600), marker = :circle)
+    l2_plot = plot(log.(ns), [jhu_errors_log sbtm_errors_log], label = ["jhu" "sbtm"], title = "$(d)d diffusion L2 error, log-log", xlabel = "n = $ns", ylabel = "L2 error from true pdf", size = (1000, 600), marker = :circle)
     dense_ns = range(ns[1], ns[end], length = 1000)
     plot!(l2_plot, log.(dense_ns), [jhu_fit_log.(log.(dense_ns)) sbtm_fit_log.(log.(dense_ns))], label = ["jhu fit, slope $jhu_slope" "sbtm fit, slope $sbtm_slope"])
     jhu_errors, sbtm_errors, l2_plot
 end
+
+jhu_errors_3, sbtm_errors_3, l2_plot_3 = L2_error_experiment(3)
+jhu_errors_4, sbtm_errors_4, l2_plot_4 = L2_error_experiment(4)
+jhu_errors_5, sbtm_errors_5, l2_plot_5 = L2_error_experiment(5)
+plot(l2_plot_3, l2_plot_4, l2_plot_5, layout = (3, 1), size = (1000, 1000))

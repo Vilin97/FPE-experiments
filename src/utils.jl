@@ -1,5 +1,6 @@
 using Statistics, LinearAlgebra
 using Distributions: MvNormal
+using HCubature
 
 # mollifier ϕ_ε
 mol(ε, x) = exp(-norm(x)^2/ε)/sqrt((π*ε)^length(x)) # = pdf(MvNormal(ε/2*I(length(x))), x)
@@ -11,11 +12,22 @@ reconstruct_pdf(ε, x, u :: AbstractMatrix) = Mol(ε, x, u)/size(u, 2)
 reconstruct_pdf(ε, x, u :: AbstractArray{T, 3}) where T = reconstruct_pdf(ε, x, reshape(u, :, size(u, 3)))
 
 "L2 error between the reconstructed pdf and the true pdf at time t"
-function L2_error(solution, true_solution, ε, t, d, n; xlim = 3, h = 0.1)
-    pdf_range = collect.(Iterators.product(fill(-xlim:h:xlim, d)...))
+function L2_error(solution, true_solution, ε, t, d, n)
+    xlim = 5
+    h = 0.1
+    pdf_range = Iterators.product(fill(-xlim:h:xlim, d)...)
     u = reshape(solution(t), d, n)
-    pdf_diff = [reconstruct_pdf(ε, x, u) for x in pdf_range] .- [pdf(true_solution(t), x) for x in pdf_range]
+    pdf_diff = [reconstruct_pdf(ε, [x...], u) for x in pdf_range] .- [pdf(true_solution(t), [x...]) for x in pdf_range]
     l2_error = norm(pdf_diff) * sqrt(h^d)
+end
+
+function L2_error_cubature(solution, true_solution, ε, t, d, n)
+    xlim = 6.
+    empirical_pdf(x) = reconstruct_pdf(ε, x, reshape(solution(t), d, n))
+    true_pdf(x) = pdf(true_solution(t), x)
+    norm2_diff(x) = (empirical_pdf(x) - true_pdf(x))^2 
+    l2_error_squared, accuracy = hcubature(norm2_diff, fill(-xlim, d), fill(xlim, d), maxevals = 10^6)
+    sqrt(l2_error_squared)
 end
 
 function moving_trap(N, num_samples, num_timestamps)
@@ -56,12 +68,12 @@ function attractive_origin(num_samples, num_timestamps; Δt = 0.01)
     xs, Δts, b, D, ρ₀, ρ
 end
 
-function diffusion_1d(n, dt = 0.005)
+function pure_diffusion(d, n, dt = 0.005)
     b(x,t) = zero(x)
     D(x,t) = 1.0
-    ρ(t) = MvNormal(2. * (t+1.) * I(1))
+    ρ(t) = MvNormal(2. * (t+1.) * I(d))
     ρ₀ = ρ(0.)
-    xs = reshape(rand(ρ₀, n), 1, 1, n)
+    xs = reshape(rand(ρ₀, n), d, 1, n)
     dt = 0.005
     tspan = (0.0, 0.5)
     ts = tspan[1]:dt:tspan[2]

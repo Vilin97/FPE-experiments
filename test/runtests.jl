@@ -34,31 +34,23 @@ function no_diffusion_test()
 end
 function diffusion_test()
     Random.seed!(1234)
-
-    D(x,t) = 1.
-    b(x,t) = zero(x)
-
+    
     ε = 0.05
-    tspan = (0., 0.5)
-    dt = 0.01
-    ts = tspan[1]:dt:tspan[2]
-    Δts = repeat([dt], length(ts)-1)
     d = 2
     n = 100
-    ρ(t) = MvNormal(2*(t+1)*I(d))
-    xs = reshape(rand(ρ(0.), n), d, 1, n)
+    xs, ts, Δts, b, D, ρ₀, ρ = pure_diffusion(d, n, 0.01)
     tol = 1.
 
     @timeit "jhu" trajectory, solution = jhu(xs, Δts, b, D; ε = ε)
     @test !isnothing(solution)
-    l2_error = L2_error(solution, ρ, ε, tspan[2], d, n)
+    l2_error = L2_error_cubature(solution, ρ, ε, ts[end], d, n)
     println("L2 error for jhu is $l2_error")
     @timeit "L2_error_test_jhu" @test l2_error < tol
 
     @timeit "sbtm" trajectory, extras = sbtm(xs, Δts, b, D; ρ₀ = ρ(0.), verbose = 0)
     solution = extras["solution"]
     @test !isnothing(solution)
-    l2_error = L2_error(solution, ρ, ε, tspan[2], d, n)
+    l2_error = L2_error_cubature(solution, ρ, ε, ts[end], d, n)
     println("L2 error for sbtm is $l2_error")
     @timeit "L2_error_test_sbtm" @test l2_error < tol
 end
