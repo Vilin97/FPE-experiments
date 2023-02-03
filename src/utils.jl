@@ -21,13 +21,14 @@ function L2_error(solution, true_solution, ε, t, d, n)
     l2_error = norm(pdf_diff) * sqrt(h^d)
 end
 
-function L2_error_cubature(solution, true_solution, ε, t, d, n)
-    xlim = 6.
+function L2_error_cubature(solution, true_solution, ε, t, d, n; verbose = 0)
+    xlim = 6. / d^0.2
     empirical_pdf(x) = reconstruct_pdf(ε, x, reshape(solution(t), d, n))
     true_pdf(x) = pdf(true_solution(t), x)
     norm2_diff(x) = (empirical_pdf(x) - true_pdf(x))^2 
-    l2_error_squared, accuracy = hcubature(norm2_diff, fill(-xlim, d), fill(xlim, d), maxevals = 10^6)
-    sqrt(l2_error_squared)
+    l2_error_squared, accuracy = hcubature(norm2_diff, fill(-xlim, d), fill(xlim, d), maxevals = 5 * 10^5)
+    verbose > 0 && (println("L2 error integration accuracy = $accuracy"))
+    l2_error = sqrt(max(eps(), l2_error_squared))
 end
 
 function moving_trap(N, num_samples, num_timestamps)

@@ -79,16 +79,16 @@ function fixed_n_experiment(n = 1000)
     pdf_plot, ent_plot, l2_plot, big_plot
 end
 
-function L2_error_experiment(d = 1)
+function L2_error_experiment(d = 1; verbose = 0)
     jhu_errors = Float64[]
     sbtm_errors = Float64[]
-    ns = [50, 75, 100, 150, 200, 300, 500, 1000, 2000, 4000]
+    ns = [50, 75, 100, 150, 200, 300, 500, 1000, 2000]
     reset_timer!()
     for n in ns
         @show n
         @timeit "n = $n" solution_jhu, solution_sbtm, ρ, ts, ε = solve_diffusion(d, n)
-        @timeit "L2_error_jhu" push!(jhu_errors, L2_error_cubature(solution_jhu, ρ, ε, ts[end], d, n))
-        @timeit "L2_error_sbtm" push!(sbtm_errors, L2_error_cubature(solution_sbtm, ρ, ε, ts[end], d, n))
+        @timeit "L2_error_jhu" push!(jhu_errors, L2_error_cubature(solution_jhu, ρ, ε, ts[end], d, n; verbose = verbose))
+        @timeit "L2_error_sbtm" push!(sbtm_errors, L2_error_cubature(solution_sbtm, ρ, ε, ts[end], d, n; verbose = verbose))
     end
     print_timer()
     jhu_errors_log = log.(jhu_errors)
@@ -103,7 +103,7 @@ function L2_error_experiment(d = 1)
     jhu_errors, sbtm_errors, l2_plot
 end
 
-jhu_errors_3, sbtm_errors_3, l2_plot_3 = L2_error_experiment(3)
-jhu_errors_4, sbtm_errors_4, l2_plot_4 = L2_error_experiment(4)
-jhu_errors_5, sbtm_errors_5, l2_plot_5 = L2_error_experiment(5)
-plot(l2_plot_3, l2_plot_4, l2_plot_5, layout = (3, 1), size = (1000, 1000))
+# jhu_errors_3, sbtm_errors_3, l2_plot_3 = L2_error_experiment(3)
+# jhu_errors_4, sbtm_errors_4, l2_plot_4 = L2_error_experiment(4)
+jhu_errors_5, sbtm_errors_5, l2_plot_5 = L2_error_experiment(5; verbose=1)
+# plot(l2_plot_3, l2_plot_4, layout = (2, 1), size = (1000, 1000))
