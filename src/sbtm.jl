@@ -55,12 +55,11 @@ D   : Rᵈ × R → Rᵈˣᵈ or R
 n   : number of particles
 s   : NN to approximate score ∇log ρ
 """
-function sbtm(xs, Δts, b, D; ρ₀ = nothing, s = nothing, kwargs...)
-    isnothing(s) && (s = initialize_s(ρ₀, xs, 100, 1; kwargs...))
-    ts = Float32.(vcat(0., cumsum(Δts)))
-    trajectories, losses, s_values, solution = sbtm_solve(Float32.(xs), Float32.(ts), b, D, deepcopy(s); kwargs...)
-    extras = Dict(["losses" => losses, "s_values" => s_values, "solution" => solution])
-    trajectories, extras
+function sbtm(xs, ts, b, D; ρ₀ = nothing, s = nothing, kwargs...)
+    isnothing(s) ? (s_new = initialize_s(ρ₀, xs, 100, 1; kwargs...)) : (s_new = deepcopy(s))
+    solution, s_values, losses = sbtm_solve(Float32.(xs), Float32.(ts), b, D, s_new; kwargs...)
+    log = Dict("s_values" => s_values, "losses" => losses)
+    solution
 end
 
 function sbtm_solve(xs, ts :: AbstractVector{T}, b, D, s; epochs = 25, record_s_values = false, record_losses = false, verbose = 0, optimiser = Adam(10^-4)) where T
@@ -89,6 +88,5 @@ function sbtm_solve(xs, ts :: AbstractVector{T}, b, D, s; epochs = 25, record_s_
     end
     ode_problem = ODEProblem(f!, initial, tspan)
     solution = solve(ode_problem, alg = Euler(), saveat=ts, tstops = ts, callback = cb)
-    trajectories = cat(solution.u..., dims=4)
-    trajectories, losses, s_values, solution
+    solution, s_values, losses
 end
