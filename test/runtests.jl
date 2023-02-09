@@ -1,7 +1,7 @@
 using Test, Distributions, Random, TimerOutputs
 
 include("../src/utils.jl")
-include("../src/jhu.jl")
+include("../src/blob.jl")
 include("../src/sbtm.jl")
 
 function no_diffusion_test()
@@ -16,7 +16,7 @@ function no_diffusion_test()
     xs = reshape([x0], 1, 1, 1)
     rtol = 0.1
 
-    @timeit "jhu" solution = jhu(xs, ts, b, D; ε = 1/π)
+    @timeit "blob" solution = blob(xs, ts, b, D; ε = 1/π)
     @test first.(solution.u) ≈ [ρ(t) for t in solution.t] rtol = rtol
 
     # the NN does not matter here because D is zero
@@ -34,12 +34,12 @@ function diffusion_test()
     p = 1
     k = 1
 
-    jhu(xs, ts, b, D; ε = ε)
-    @timeit "jhu" solution = jhu(xs, ts, b, D; ε = ε)
+    blob(xs, ts, b, D; ε = ε)
+    @timeit "blob" solution = blob(xs, ts, b, D; ε = ε)
     @test !isnothing(solution)
     error = Lp_error(solution, ρ, ε, ts[end], d, n; p=p, k = k)
-    println("L$p error for jhu is $error")
-    @timeit "jhu error test" @test error < tol
+    println("L$p error for blob is $error")
+    @timeit "blob error test" @test error < tol
 
     @timeit "sbtm" solution = sbtm(xs, ts, b, D; ρ₀ = ρ(0.), verbose = 0)
     @test !isnothing(solution)

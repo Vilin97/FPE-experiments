@@ -3,12 +3,12 @@ using Random: seed!
 
 include("utils.jl")
 include("sbtm.jl")
-include("jhu.jl")
+include("blob.jl")
 
 # first example from paper
 function moving_trap_experiment_combined(N, num_samples, num_timestamps; folder = "data")
     moving_trap_experiment(N, num_samples, num_timestamps, sbtm, "sbtm"; folder = folder)
-    moving_trap_experiment(N, num_samples, num_timestamps, jhu, "jhu"; folder = folder)
+    moving_trap_experiment(N, num_samples, num_timestamps, blob, "blob"; folder = folder)
 end
 
 function moving_trap_experiment(N, num_samples, num_timestamps, method, method_name; folder = "data", kwargs...)
@@ -32,7 +32,7 @@ function moving_trap_experiment(N, num_samples, num_timestamps, method, method_n
     println("Done with saving for $method_name")
 end
 
-function moving_trap_jhu_epsilon_experiment(N=50, num_samples=100, num_timestamps=200)
+function moving_trap_blob_epsilon_experiment(N=50, num_samples=100, num_timestamps=200)
     seed = N*num_samples*num_timestamps
     seed!(seed)
     xs, Δts, b, D, ρ₀, target, a, w, α, β = moving_trap(N, num_samples, num_timestamps)
@@ -40,12 +40,12 @@ function moving_trap_jhu_epsilon_experiment(N=50, num_samples=100, num_timestamp
     epsilons = 0.1:0.02:0.2
     for ε in epsilons
         t1 = time()
-        solution, trajectories = jhu(xs, Δts, b, D, ε)
+        solution, trajectories = blob(xs, Δts, b, D, ε)
         t2 = time()
         println("Done with ε=$(round(ε, digits = 2)). Took $(t2-t1) seconds.")
 
-        JLD2.save("jhu_eps_experiment//jhu_epsilon_experiment_eps_$(round(ε, digits = 2)).jld2", 
-        "jhu_trajectories", trajectories,
+        JLD2.save("blob_eps_experiment//blob_epsilon_experiment_eps_$(round(ε, digits = 2)).jld2", 
+        "blob_trajectories", trajectories,
         "epsilon", ε,
         "seed", seed)
     end
@@ -88,7 +88,7 @@ end
 
 function attractive_origin_experiment_combined(num_samples, num_timestamps; folder = "data")
     attractive_origin_experiment(num_samples, num_timestamps, sbtm, "sbtm"; folder = folder)
-    attractive_origin_experiment(num_samples, num_timestamps, jhu, "jhu"; folder = folder, ε = 0.14)
+    attractive_origin_experiment(num_samples, num_timestamps, blob, "blob"; folder = folder, ε = 0.14)
 end
 
 function attractive_origin_experiment(num_samples, num_timestamps, method, method_name; folder = "data", kwargs...)
@@ -120,4 +120,4 @@ end
 num_samples=100
 num_timestamps=300
 # attractive_origin_experiment_combined(num_samples, num_timestamps, folder = "data")
-attractive_origin_experiment(num_samples, num_timestamps, jhu, "jhu"; folder = "data", ε = 1/π)
+attractive_origin_experiment(num_samples, num_timestamps, blob, "blob"; folder = "data", ε = 1/π)

@@ -2,9 +2,9 @@ include("utils.jl")
 
 using DifferentialEquations, LoopVectorization
 
-function jhu(xs, ts, b, D; ε = 1/π, kwargs...)
+function blob(xs, ts, b, D; ε = 1/π, kwargs...)
     T = typeof(ε)
-    solution = jhu_solve(T.(xs), T.(ts), b, D, ε)
+    solution = blob_solve(T.(xs), T.(ts), b, D, ε)
     solution
 end
 
@@ -31,7 +31,7 @@ function f!(dxs, xs_, pars, t)
     dxs .= reshape(-D(xs,t) .* term1 .+ term2, d_bar, :, n) .+ b(xs_, t)
 end
 
-function jhu_solve(xs, ts :: AbstractVector{T}, b, D, ε :: T) where T
+function blob_solve(xs, ts :: AbstractVector{T}, b, D, ε :: T) where T
     tspan = (ts[1], ts[end])
     d_bar, N, n = size(xs)
     d = d_bar * N

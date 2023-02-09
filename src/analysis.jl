@@ -121,27 +121,27 @@ function make_plots(trajectories, labels, analytic_solution, ρ; ε_entropy = 1.
 end
 
 # epsilon experiment:
-function jhu_epsilon_experiment()
+function blob_epsilon_experiment()
     epsilons = 0.1:0.02:0.2
     rounded_εs = round.(epsilons, digits = 2)
-    trajectories = [JLD2.load("jhu_eps_experiment//jhu_epsilon_experiment_eps_$(rounded_ε).jld2")["jhu_trajectories"] for rounded_ε in rounded_εs]
+    trajectories = [JLD2.load("blob_eps_experiment//blob_epsilon_experiment_eps_$(rounded_ε).jld2")["blob_trajectories"] for rounded_ε in rounded_εs]
     labels = ["ε = $(rounded_ε)" for rounded_ε in rounded_εs]
     stats_plot, heatmap_plot = make_plots(trajectories, labels)
     stats_plot, heatmap_plot
 end
 
-# sbtm vs jhu
-function sbtm_vs_jhu_experiment(N, num_samples, num_timestamps)
+# sbtm vs blob
+function sbtm_vs_blob_experiment(N, num_samples, num_timestamps)
     println("Loading data for N = $N, num_samples = $num_samples, num_timestamps = $num_timestamps")
     seed = N*num_samples*num_timestamps
     seed!(seed)
-    data_jhu = JLD2.load("data/moving_trap_jhu_$seed.jld2")
+    data_blob = JLD2.load("data/moving_trap_blob_$seed.jld2")
     data_sbtm = JLD2.load("data/moving_trap_sbtm_$seed.jld2")
-    @assert data_jhu["N"] == data_sbtm["N"] && data_jhu["num_samples"] == data_sbtm["num_samples"] && data_jhu["num_timestamps"] == data_sbtm["num_timestamps"] && data_jhu["N"] == N && data_jhu["num_samples"] == num_samples && data_jhu["num_timestamps"] == num_timestamps
-    jhu_trajectories = data_jhu["trajectories"]
+    @assert data_blob["N"] == data_sbtm["N"] && data_blob["num_samples"] == data_sbtm["num_samples"] && data_blob["num_timestamps"] == data_sbtm["num_timestamps"] && data_blob["N"] == N && data_blob["num_samples"] == num_samples && data_blob["num_timestamps"] == num_timestamps
+    blob_trajectories = data_blob["trajectories"]
     sbtm_trajectories = data_sbtm["trajectories"]
-    trajectories = [sbtm_trajectories, jhu_trajectories]
-    labels = ["sbtm", "jhu"]
+    trajectories = [sbtm_trajectories, blob_trajectories]
+    labels = ["sbtm", "blob"]
 
     analytic_solution, ρ = solve_analytically(N, num_samples, num_timestamps)
     stats_plot, heatmap_plot = make_plots(trajectories, labels, analytic_solution, ρ)
@@ -165,9 +165,9 @@ end
 function no_drift_experiment()
     data = JLD2.load("no_drift_experiment/moving_trap_data_$(1000000).jld2")
     sbtm_trajectories = data["sbtm_trajectories"]  
-    jhu_trajectories = data["jhu_trajectories"] 
-    trajectories = [sbtm_trajectories, jhu_trajectories]
-    labels = ["sbtm", "jhu"]
+    blob_trajectories = data["blob_trajectories"] 
+    trajectories = [sbtm_trajectories, blob_trajectories]
+    labels = ["sbtm", "blob"]
     stats_plot, heatmap_plot = make_plots(trajectories, labels)
     stats_plot, heatmap_plot
 end
@@ -200,7 +200,7 @@ function print_mol_stats(N, num_samples, num_timestamps, t = 0.)
         push!(diffusions, diffusion)
     end
     # plot on log scale
-    pl1 = plot(εs, norm.(diffusions, 1), label = "jhu diffusion", xlabel = "ε", ylabel = "1-norm", title = "N = $N, diffusion vs drift norms at update step", yscale = :log10, xticks = εs)
+    pl1 = plot(εs, norm.(diffusions, 1), label = "blob diffusion", xlabel = "ε", ylabel = "1-norm", title = "N = $N, diffusion vs drift norms at update step", yscale = :log10, xticks = εs)
     plot!(pl1, εs, repeat([norm(D(xs,t)*s_value, 1)], length(εs)), label = "sbtm diffusion")
     plot!(pl1, εs, repeat([norm(drift, 1)], length(εs)), label = "drift")
     # pl2 = plot(εs, norm.(diffusions, Inf)./N, label = nothing, xscale = :log10, yscale = :log10, xlabel = "ε", ylabel = "Inf-norm/N")
