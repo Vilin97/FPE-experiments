@@ -53,39 +53,6 @@ function moving_trap_blob_epsilon_experiment(N=50, num_samples=100, num_timestam
     println("Done with saving")
 end
 
-function moving_trap_experiment_sbtm_old_new(N, num_samples, num_timestamps; folder = "data")
-    seed = N*num_samples*num_timestamps
-    seed!(seed)
-    xs, Δts, b, D, ρ₀, target, a, w, α, β = moving_trap(N, num_samples, num_timestamps)
-
-    println("Done with initial setup for sbtm.")
-
-    s = initialize_s(ρ₀, xs, 100, 1)
-    # seed!(seed)
-    # (old_sbtm_trajectories, _), t = @timed sbtm(xs, Δts, b, D; ρ₀ = ρ₀, s=s)
-    # println("Done with old sbtm. Took $t seconds.")
-    
-    seed!(seed)
-    (new_sbtm_trajectories, _), t = @timed sbtm(xs, Δts, b, D; ρ₀ = ρ₀, s=s)
-    println("Done with new sbtm. Took $t seconds.")
-
-    # JLD2.save("$(folder)/moving_trap_sbtm_$seed.jld2", 
-    #     "trajectories", old_sbtm_trajectories, 
-    #     "seed", seed,
-    #     "N", N,
-    #     "num_samples", num_samples,
-    #     "num_timestamps", num_timestamps)
-
-    JLD2.save("$(folder)/moving_trap_sbtm_new_$seed.jld2", 
-        "trajectories", new_sbtm_trajectories, 
-        "seed", seed,
-        "N", N,
-        "num_samples", num_samples,
-        "num_timestamps", num_timestamps)
-
-    println("Done with saving for sbtm")
-end
-
 function attractive_origin_experiment_combined(num_samples, num_timestamps; folder = "data")
     attractive_origin_experiment(num_samples, num_timestamps, sbtm, "sbtm"; folder = folder)
     attractive_origin_experiment(num_samples, num_timestamps, blob, "blob"; folder = folder, ε = 0.14)
@@ -112,12 +79,25 @@ function attractive_origin_experiment(num_samples, num_timestamps, method, metho
     println("Done with saving for $method_name")
 end
 
-# N=50
-# num_samples=100
-# num_timestamps=200
-# moving_trap_experiment_sbtm_old_new(N, num_samples, num_timestamps, folder = "old_new_sbtm")
+"Solve pure dimension-d diffusion problems with n particles for different d and n. Save solutions."
+function do_experiment(ds, experiment, experiment_name; methods = [sbtm, blob], method_names = ["sbtm", "blob"])
+    ε = 0.053
+    ns = [50, 75, 100, 150, 200, 300, 500, 750, 1000, 2000, 4000]
+    reset_timer!()
+    for d in ds
+        println("d = $d")
+        @timeit "d = $d" for n in ns
+            println("  n = $n")
+            seed!(1234)
+            xs, ts, b, D, ρ₀, ρ = experiment(d, n)
+            @timeit "n = $n" for (method, method_name) in zip(methods, method_names)
+                @timeit method_name solution = method(xs, ts, b, D; ρ₀ = ρ₀, ε = ε)
+                JLD2.save("$(experiment_name)_experiment/$(method_name)_d_$(d)_n_$(n).jld2", "solution", solution,
+                    "epsilon", ε)
+            end
+        end
+    end
+    print_timer()
+end
 
-num_samples=100
-num_timestamps=300
-# attractive_origin_experiment_combined(num_samples, num_timestamps, folder = "data")
-attractive_origin_experiment(num_samples, num_timestamps, blob, "blob"; folder = "data", ε = 1/π)
+do_experiment([1,5,10], attractive_origin, "attractive_origin")

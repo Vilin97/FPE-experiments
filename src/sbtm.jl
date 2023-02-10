@@ -7,7 +7,7 @@ using Flux.Optimise: Adam
 using Flux: params
 
 
-function initialize_s(ρ₀, xs, size_hidden, num_hidden; activation = relu, verbose = 1, kwargs...)
+function initialize_s(ρ₀, xs, size_hidden, num_hidden; activation = relu, verbose = 0, kwargs...)
     d_bar, N, n = size(xs)
     d = d_bar*N
     s = Chain(
@@ -17,8 +17,8 @@ function initialize_s(ρ₀, xs, size_hidden, num_hidden; activation = relu, ver
         Dense(size_hidden => d_bar)
         # xs -> reshape(xs, d_bar, N, n)
         )
-    epochs,t = @timed initialize_s!(s, ρ₀, xs; verbose = verbose, kwargs...)
-    println("Done with NN initialization. Took $epochs epochs and $t seconds.")
+    @timeit "NN init" epochs = initialize_s!(s, ρ₀, xs; verbose = verbose, kwargs...)
+    verbose > 0 && println("Done with NN initialization. Took $epochs epochs.")
     return s
 end
 
@@ -62,7 +62,7 @@ function sbtm(xs, ts, b, D; ρ₀ = nothing, s = nothing, kwargs...)
     solution
 end
 
-function sbtm_solve(xs, ts :: AbstractVector{T}, b, D, s; epochs = 25, record_s_values = false, record_losses = false, verbose = 0, optimiser = Adam(10^-4)) where T
+function sbtm_solve(xs, ts :: AbstractVector{T}, b, D, s; epochs = 25, record_s_values = false, record_losses = false, verbose = 0, optimiser = Adam(10^-4), kwargs...) where T
     tspan = (zero(T), ts[end])
     initial = xs
     s_values = zeros(T, size(xs)..., length(ts))

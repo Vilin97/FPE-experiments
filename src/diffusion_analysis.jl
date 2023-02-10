@@ -1,33 +1,37 @@
-using Distributions, Plots, TimerOutputs, Polynomials
+using Distributions, Plots, TimerOutputs, Polynomials, JLD2, DifferentialEquations
 using Random: seed!
+
 plotly()
 include("../src/utils.jl")
 include("../src/blob.jl")
 include("../src/sbtm.jl")
 
+"Solve the pure diffusion problem of dimension d with n particles."
 function solve_diffusion(d, n)
     seed!(1234)
-    xs, ts, Δts, b, D, ρ₀, ρ = pure_diffusion(d, n)
+    xs, ts, b, D, ρ₀, ρ = pure_diffusion(d, n)
     ε = 0.053
-    @timeit "blob" _, solution_blob = blob(xs, Δts, b, D; ε = ε)
-    @timeit "sbtm" _, extras = sbtm(xs, Δts, b, D; ρ₀ = ρ₀, optimiser = Adam(10^-2))
-    solution_sbtm = extras["solution"]
+    @timeit "blob" solution_blob = blob(xs, ts, b, D; ε = ε)
+    @timeit "sbtm" solution_sbtm = sbtm(xs, ts, b, D; ρ₀ = ρ₀, optimiser = Adam(10^-2))
 
     solution_blob, solution_sbtm, ρ, ts, ε
 end
 
-reconstruct_pdf(ε, x, u) = Mol(ε, x, u)/length(u)
-
-function pdf_plots(solutions, labels, true_solution, t)
-    plt = plot(title = "t = $(round(t, digits = 2)), #particles = $(length(solutions[1][end]))", xlabel = "x", ylabel = "pdf(x)", ylim = (0, 0.5))
+"plot the marginal pdfs at time t"
+function pdf_plot(solutions, labels, true_solution, t, ε)
+    d, = size(true_solution(t))
+    u = reshape(solutions[1](t), d, :)
+    n = size(u, 2)
+    plt = plot(title = "$(d)d marginal, t = $(round(t, digits = 2)), n = $n", xlabel = "x", ylabel = "pdf(x)", ylim = (0, 0.5))
     pdf_range = range(-6, 6, length=100)
     for (solution, label) in zip(solutions, labels)
-        u = reshape(solution(t), :)
-        label_ = t == 0.0 ? label : nothing
+        u = reshape(solution(t), d, n)[1, :]
+        label_ = (d==1 && n==200) ? label : nothing
         plot!(plt, pdf_range, [reconstruct_pdf(ε, x, u) for x in pdf_range], label = label_)
     end
-    label_ = t == 0.0 ? "true" : nothing
-    plot!(plt, pdf_range, pdf.(true_solution(t), pdf_range), label = label_)
+    label_ = (d==1 && n==200) ? "true" : nothing
+    true_marginal = marginal(true_solution(t))
+    plot!(plt, pdf_range, [pdf(true_marginal, [x]) for x in pdf_range], label = label_)
     plt
 end
 
@@ -47,63 +51,86 @@ function entropy_plot(solutions, labels, true_solution, ts)
     plot!(plt, ts, anal_ent, label = "true entropy")
 end
 
-function l2_error_plot(solutions, labels, true_solution, ts)
-    plt = plot(title = "L2 error comparison, n = $(length(solutions[1][end]))", xlabel = "t", ylabel = "error", size = (1000, 300))
-    pdf_range = range(-6, 6, length=100)
-    for (solution, label) in zip(solutions, labels)
-        l2_errors = []
-        for t in ts
-            u = reshape(solution(t), :)
-            pdf_diff = [reconstruct_pdf(ε, x, u) for x in pdf_range] .- [pdf(true_solution(t), x) for x in pdf_range]
-            l2_error = norm(pdf_diff) * sqrt(step(pdf_range))
-            push!(l2_errors, l2_error)
-        end
-        plot!(plt, ts, l2_errors, label = label, marker = :circle)
-    end
-    plt
-end
-
+"Keep n fixed, plot pdfs, entropy and L2 error at evenly spaced times."
 function fixed_n_experiment(n = 1000)
-    solution_blob, solution_sbtm, ρ, ts, ε = solve_diffusion_1d(n)
+    solution_blob, solution_sbtm, ρ, ts, ε = solve_diffusion(1, n)
     plots = []
     for t in range(ts[1], ts[end], length=12)
-        push!(plots, pdf_plots([solution_blob, solution_sbtm], ["blob, eps=$ε", "sbtm"], ρ, t))
+        push!(plots, pdf_plot([solution_blob, solution_sbtm], ["blob, eps=$ε", "sbtm"], ρ, t))
     end
     println("plotting pdfs")
     pdf_plot = plot(plots..., size = (1400, 900))
     println("plotting entropy")
     ent_plot = entropy_plot([solution_blob, solution_sbtm], ["blob, eps=$ε", "sbtm"], ρ, ts)
-    println("plotting l2 error")
+    println("plotting L2 error")
     l2_plot = l2_error_plot([solution_blob, solution_sbtm], ["blob, eps=$ε", "sbtm"], ρ, range(ts[1], ts[end], length = 10))
     big_plot = plot(entplot, l2_plot, pdf_plot, layout = (3, 1), size = (1800, 1000))
     pdf_plot, ent_plot, l2_plot, big_plot
 end
 
-function L2_error_experiment(d = 1; verbose = 0)
-    blob_errors = Float64[]
-    sbtm_errors = Float64[]
-    ns = [50, 75, 100, 150, 200, 300, 500, 1000, 2000]
-    reset_timer!()
-    for n in ns
-        @show n
-        @timeit "n = $n" solution_blob, solution_sbtm, ρ, ts, ε = solve_diffusion(d, n)
-        @timeit "L2_error_blob" push!(blob_errors, L2_error_cubature(solution_blob, ρ, ε, ts[end], d, n; verbose = verbose))
-        @timeit "L2_error_sbtm" push!(sbtm_errors, L2_error_cubature(solution_sbtm, ρ, ε, ts[end], d, n; verbose = verbose))
-    end
-    print_timer()
-    blob_errors_log = log.(blob_errors)
-    sbtm_errors_log = log.(sbtm_errors)
-    blob_fit_log = Polynomials.fit(log.(ns), blob_errors_log, 1)
-    sbtm_fit_log = Polynomials.fit(log.(ns), sbtm_errors_log, 1)
-    blob_slope = round(blob_fit_log.coeffs[2], digits = 2)
-    sbtm_slope = round(sbtm_fit_log.coeffs[2], digits = 2)
-    l2_plot = plot(log.(ns), [blob_errors_log sbtm_errors_log], label = ["blob" "sbtm"], title = "$(d)d diffusion L2 error, log-log", xlabel = "n = $ns", ylabel = "L2 error from true pdf", size = (1000, 600), marker = :circle)
+function Lp_error_plot(ns, errors, labels, colors, t, d, experiment_name, k, p)
+    Lp_errors_plot = plot(title = "$(d)d $experiment_name $k-marginal L$p error at t = $t, log-log", ylabel = "L$p error from true pdf", xaxis = :log, yaxis = :log)
     dense_ns = range(ns[1], ns[end], length = 1000)
-    plot!(l2_plot, log.(dense_ns), [blob_fit_log.(log.(dense_ns)) sbtm_fit_log.(log.(dense_ns))], label = ["blob fit, slope $blob_slope" "sbtm fit, slope $sbtm_slope"])
-    blob_errors, sbtm_errors, l2_plot
+    for (error, label, color) in zip(errors, labels, colors)
+        error_log = log.(error)
+        fit_log = Polynomials.fit(log.(ns), error_log, 1)
+        slope = round(fit_log.coeffs[2], digits = 2)
+        plot!(Lp_errors_plot, ns, error, label = (d==1 && t==0.5) ? "t = $t, $label" : nothing, marker = :circle, color = color)
+        poly = exp.( fit_log.(log.(dense_ns)) )
+        plot!(Lp_errors_plot, dense_ns, poly, label = "d = $d, t = $t, $label slope $slope", color = color, opacity = 0.4)
+    end
+    Lp_errors_plot
 end
 
-# blob_errors_3, sbtm_errors_3, l2_plot_3 = L2_error_experiment(3)
-# blob_errors_4, sbtm_errors_4, l2_plot_4 = L2_error_experiment(4)
-blob_errors_5, sbtm_errors_5, l2_plot_5 = L2_error_experiment(5; verbose=1)
-# plot(l2_plot_3, l2_plot_4, layout = (2, 1), size = (1000, 1000))
+"Change n, plot Lp error of k-particles marginal at end time vs n."
+function Lp_error_experiment(d; p=2, k=1, verbose = 0, experiment = pure_diffusion, experiment_name = "pure_diffusion")
+    @show d
+    ε = 0.053
+    ns = [50, 75, 100, 150, 200, 300, 500, 750, 1000, 2000, 4000]
+    _, ts, _, _, _, ρ = experiment(d, ns[1])
+    t_range = range(0.5, ts[end], length = 2)
+    plots = []
+    for (i,t) in enumerate(t_range)
+        blob_errors = Float64[]
+        sbtm_errors = Float64[]
+        for n in ns
+            solution_blob = JLD2.load("$(experiment_name)_experiment/blob_d_$(d)_n_$(n).jld2", "solution")
+            solution_sbtm = JLD2.load("$(experiment_name)_experiment/sbtm_d_$(d)_n_$(n).jld2", "solution")
+            push!(blob_errors, Lp_error(solution_blob, ρ, ε, t, d, n; verbose = verbose, p = p, k=k))
+            push!(sbtm_errors, Lp_error(solution_sbtm, ρ, ε, t, d, n; verbose = verbose, p = p, k=k))
+        end
+        Lp_errors_plot = Lp_error_plot(ns, [blob_errors, sbtm_errors], ["blob", "sbtm"], [:blue, :red], t, d, experiment_name, k, p)
+        push!(plots, Lp_errors_plot)
+    end
+    Lp_plots = plot(plots..., layout = (1, length(plots)))
+end
+
+"Change n, plot Lp error of k-particles marginal at end time vs n."
+function marginal_pdf_experiment(d; experiment = pure_diffusion, experiment_name = "pure_diffusion")
+    @show d
+    ε = 0.053
+    ns = [200, 1000, 2000, 4000]
+    _, ts, _, _, _, ρ = experiment(d, ns[1])
+    plots = []
+    for n in ns
+        solution_blob = JLD2.load("$(experiment_name)_experiment/blob_d_$(d)_n_$(n).jld2", "solution")
+        solution_sbtm = JLD2.load("$(experiment_name)_experiment/sbtm_d_$(d)_n_$(n).jld2", "solution")
+        pdf_plt = pdf_plot([solution_blob, solution_sbtm], ["blob", "sbtm"], ρ, ts[end], ε)
+        push!(plots, pdf_plt)
+    end
+    plot(plots..., layout = (1, length(plots)))
+end
+
+Lp_error_plots = []
+for d in [1,2,5,10]
+    error_plt = Lp_error_experiment(d, experiment = attractive_origin, experiment_name = "attractive_origin")
+    push!(Lp_error_plots, error_plt)
+end
+plt=plot(Lp_error_plots..., layout = (length(Lp_error_plots), 1), size = (1400, 800))
+
+# pdf_plots_ = []
+# for d in [1,2,5,10]
+#     plt_ = marginal_pdf_experiment(d, experiment = attractive_origin, experiment_name = "attractive_origin")
+#     push!(pdf_plots_, plt_)
+# end
+# plot(pdf_plots_..., layout = (length(pdf_plots_), 1), size = (1400, 800))
