@@ -81,18 +81,19 @@ end
 
 "Solve pure dimension-d diffusion problems with n particles for different d and n. Save solutions."
 function do_experiment(ds, experiment, experiment_name; methods = [sbtm, blob], method_names = ["sbtm", "blob"])
-    ε = 0.053
-    ns = [50, 75, 100, 150, 200, 300, 500, 750, 1000, 2000, 4000]
+    # ns = [50, 75, 100, 150, 200, 300, 500, 750, 1000, 2000, 4000]
+    ns = [200, 1000, 2000, 4000]
     reset_timer!()
     for d in ds
         println("d = $d")
         @timeit "d = $d" for n in ns
+            ε = epsilon(d, n)
             println("  n = $n")
             seed!(1234)
             xs, ts, b, D, ρ₀, ρ = experiment(d, n)
             @timeit "n = $n" for (method, method_name) in zip(methods, method_names)
                 @timeit method_name solution = method(xs, ts, b, D; ρ₀ = ρ₀, ε = ε)
-                JLD2.save("$(experiment_name)_experiment/$(method_name)_d_$(d)_n_$(n).jld2", "solution", solution,
+                JLD2.save("$(experiment_name)_experiment/$(method_name)_d_$(d)_n_$(n)_eps_$(ε).jld2", "solution", solution,
                     "epsilon", ε)
             end
         end
@@ -100,4 +101,4 @@ function do_experiment(ds, experiment, experiment_name; methods = [sbtm, blob], 
     print_timer()
 end
 
-do_experiment([1,5,10], attractive_origin, "attractive_origin")
+do_experiment([1,2,3,5,10], pure_diffusion, "pure_diffusion", methods = [blob], method_names = ["blob"])

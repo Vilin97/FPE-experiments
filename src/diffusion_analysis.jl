@@ -113,7 +113,7 @@ function marginal_pdf_experiment(d; experiment = pure_diffusion, experiment_name
     _, ts, _, _, _, ρ = experiment(d, ns[1])
     plots = []
     for n in ns
-        solution_blob = JLD2.load("$(experiment_name)_experiment/blob_d_$(d)_n_$(n).jld2", "solution")
+        solution_blob = JLD2.load("$(experiment_name)_experiment/blob_d_$(d)_n_$(n)_$(epsilon(d, n)).jld2", "solution")
         solution_sbtm = JLD2.load("$(experiment_name)_experiment/sbtm_d_$(d)_n_$(n).jld2", "solution")
         pdf_plt = pdf_plot([solution_blob, solution_sbtm], ["blob", "sbtm"], ρ, ts[end], ε)
         push!(plots, pdf_plt)
@@ -121,16 +121,16 @@ function marginal_pdf_experiment(d; experiment = pure_diffusion, experiment_name
     plot(plots..., layout = (1, length(plots)))
 end
 
-Lp_error_plots = []
-for d in [1,2,5,10]
-    error_plt = Lp_error_experiment(d, experiment = attractive_origin, experiment_name = "attractive_origin")
-    push!(Lp_error_plots, error_plt)
-end
-plt=plot(Lp_error_plots..., layout = (length(Lp_error_plots), 1), size = (1400, 800))
-
-# pdf_plots_ = []
+# Lp_error_plots = []
 # for d in [1,2,5,10]
-#     plt_ = marginal_pdf_experiment(d, experiment = attractive_origin, experiment_name = "attractive_origin")
-#     push!(pdf_plots_, plt_)
+#     error_plt = Lp_error_experiment(d, experiment = attractive_origin, experiment_name = "attractive_origin")
+#     push!(Lp_error_plots, error_plt)
 # end
-# plot(pdf_plots_..., layout = (length(pdf_plots_), 1), size = (1400, 800))
+# plt=plot(Lp_error_plots..., layout = (length(Lp_error_plots), 1), size = (1400, 800))
+
+pdf_plots_ = []
+for d in [1,2,3,5,10]
+    plt_ = marginal_pdf_experiment(d, experiment = pure_diffusion, experiment_name = "pure_diffusion")
+    push!(pdf_plots_, plt_)
+end
+plot(pdf_plots_..., layout = (length(pdf_plots_), 1), size = (1400, 800))

@@ -1,6 +1,6 @@
 # implementing the algorithm from "probability flow solution of the fokker-planck equation" 2022
 
-using Flux, LinearAlgebra
+using Flux, LinearAlgebra, TimerOutputs
 using Distributions: MvNormal, logpdf
 using Zygote: gradient, withgradient
 using Flux.Optimise: Adam
