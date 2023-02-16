@@ -80,20 +80,20 @@ function attractive_origin_experiment(num_samples, num_timestamps, method, metho
 end
 
 "Solve pure dimension-d diffusion problems with n particles for different d and n. Save solutions."
-function do_experiment(ds, experiment, experiment_name; methods = [sbtm, blob], method_names = ["sbtm", "blob"])
+function do_experiment(ds, experiment, experiment_name; methods = [sbtm, blob], method_names = ["sbtm", "blob"], epsilon_choice = epsilon)
     # ns = [50, 75, 100, 150, 200, 300, 500, 750, 1000, 2000, 4000]
     ns = [200, 1000, 2000, 4000]
     reset_timer!()
     for d in ds
         println("d = $d")
         @timeit "d = $d" for n in ns
-            ε = epsilon(d, n)
+            ε = epsilon_choice(d, n)
             println("  n = $n")
             seed!(1234)
             xs, ts, b, D, ρ₀, ρ = experiment(d, n)
             @timeit "n = $n" for (method, method_name) in zip(methods, method_names)
                 @timeit method_name solution = method(xs, ts, b, D; ρ₀ = ρ₀, ε = ε)
-                JLD2.save("$(experiment_name)_experiment/$(method_name)_d_$(d)_n_$(n)_eps_$(ε).jld2", "solution", solution,
+                JLD2.save("$(experiment_name)_experiment/$(method_name)_d_$(d)_n_$(n)_eps_$ε.jld2", "solution", solution,
                     "epsilon", ε)
             end
         end
@@ -101,4 +101,6 @@ function do_experiment(ds, experiment, experiment_name; methods = [sbtm, blob], 
     print_timer()
 end
 
-do_experiment([1,2,3,5,10], pure_diffusion, "pure_diffusion", methods = [blob], method_names = ["blob"])
+for epsilon_choice in [(d,n) -> epsilon(d,n,1/2), (d,n) -> epsilon(d,n,1/3)]
+    do_experiment([1,2,3,5,10], pure_diffusion, "pure_diffusion", methods = [blob], method_names = ["blob"], epsilon_choice = epsilon_choice)
+end

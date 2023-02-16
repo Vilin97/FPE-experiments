@@ -1,4 +1,4 @@
-using Distributions, Plots, TimerOutputs, Polynomials, JLD2, DifferentialEquations
+using Distributions, Plots, TimerOutputs, Polynomials, JLD2, DifferentialEquations, OrdinaryDiffEq, Flux
 using Random: seed!
 
 plotly()
@@ -24,14 +24,14 @@ function pdf_plot(solutions, labels, true_solution, t, ε)
     n = size(u, 2)
     plt = plot(title = "$(d)d marginal, t = $(round(t, digits = 2)), n = $n", xlabel = "x", ylabel = "pdf(x)", ylim = (0, 0.5))
     pdf_range = range(-6, 6, length=100)
+    label_ = (d==1 && n==200) ? "true" : nothing
+    true_marginal = marginal(true_solution(t))
+    plot!(plt, pdf_range, [pdf(true_marginal, [x]) for x in pdf_range], label = label_)
     for (solution, label) in zip(solutions, labels)
         u = reshape(solution(t), d, n)[1, :]
         label_ = (d==1 && n==200) ? label : nothing
         plot!(plt, pdf_range, [reconstruct_pdf(ε, x, u) for x in pdf_range], label = label_)
     end
-    label_ = (d==1 && n==200) ? "true" : nothing
-    true_marginal = marginal(true_solution(t))
-    plot!(plt, pdf_range, [pdf(true_marginal, [x]) for x in pdf_range], label = label_)
     plt
 end
 
@@ -113,9 +113,11 @@ function marginal_pdf_experiment(d; experiment = pure_diffusion, experiment_name
     _, ts, _, _, _, ρ = experiment(d, ns[1])
     plots = []
     for n in ns
-        solution_blob = JLD2.load("$(experiment_name)_experiment/blob_d_$(d)_n_$(n)_$(epsilon(d, n)).jld2", "solution")
         solution_sbtm = JLD2.load("$(experiment_name)_experiment/sbtm_d_$(d)_n_$(n).jld2", "solution")
-        pdf_plt = pdf_plot([solution_blob, solution_sbtm], ["blob", "sbtm"], ρ, ts[end], ε)
+        solution_blob1 = JLD2.load("$(experiment_name)_experiment/blob_d_$(d)_n_$(n)_eps_$(3.16 / n^(1/d)).jld2", "solution")
+        solution_blob2 = JLD2.load("$(experiment_name)_experiment/blob_d_$(d)_n_$(n)_eps_$(6.32 / n^(1/d)).jld2", "solution")
+        solution_blob3 = JLD2.load("$(experiment_name)_experiment/blob_d_$(d)_n_$(n)_eps_$(12.64 / n^(1/d)).jld2", "solution")
+        pdf_plt = pdf_plot([solution_sbtm, solution_blob1, solution_blob2, solution_blob3], ["sbtm", "blob eps = 3.16n^1/d", "blob eps = 6.32n^1/d", "blob eps 12.64n^1/d"], ρ, ts[end], ε)
         push!(plots, pdf_plt)
     end
     plot(plots..., layout = (1, length(plots)))

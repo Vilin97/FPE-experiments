@@ -76,4 +76,4 @@ function attractive_origin(d, n, dt = 0.005, t_end = 1.)
 end
 
 "set ε = 3.16 / n^(1/d) to account for particles getting sparser with dimension"
-epsilon(d, n) = 3.16 / n^(1/d)
+epsilon(d, n, k) = 4000. ^(k/2) / (20. * n^(k/d))
