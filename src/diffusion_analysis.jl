@@ -106,21 +106,25 @@ function Lp_error_experiment(d; p=2, k=1, verbose = 0, experiment = pure_diffusi
 end
 
 "Change n, plot Lp error of k-particles marginal at end time vs n."
-function marginal_pdf_experiment(d; experiment = pure_diffusion, experiment_name = "pure_diffusion")
-    @show d
-    ε = 0.053
-    ns = [200, 1000, 2000, 4000]
-    _, ts, _, _, _, ρ = experiment(d, ns[1])
-    plots = []
-    for n in ns
-        solution_sbtm = JLD2.load("$(experiment_name)_experiment/sbtm_d_$(d)_n_$(n).jld2", "solution")
-        solution_blob1 = JLD2.load("$(experiment_name)_experiment/blob_d_$(d)_n_$(n)_eps_$(3.16 / n^(1/d)).jld2", "solution")
-        solution_blob2 = JLD2.load("$(experiment_name)_experiment/blob_d_$(d)_n_$(n)_eps_$(6.32 / n^(1/d)).jld2", "solution")
-        solution_blob3 = JLD2.load("$(experiment_name)_experiment/blob_d_$(d)_n_$(n)_eps_$(12.64 / n^(1/d)).jld2", "solution")
-        pdf_plt = pdf_plot([solution_sbtm, solution_blob1, solution_blob2, solution_blob3], ["sbtm", "blob eps = 3.16n^1/d", "blob eps = 6.32n^1/d", "blob eps 12.64n^1/d"], ρ, ts[end], ε)
-        push!(plots, pdf_plt)
+function marginal_pdf_experiment(ds; experiment = pure_diffusion, experiment_name = "pure_diffusion")
+    pdf_plots_ = []
+    for d in ds
+        @show d
+        ε = 0.053
+        ns = [200, 1000, 2000, 4000]
+        _, ts, _, _, _, ρ = experiment(d, ns[1])
+        plots = []
+        for n in ns
+            solution_sbtm = JLD2.load("$(experiment_name)_experiment/sbtm_d_$(d)_n_$(n).jld2", "solution")
+            solution_blob1 = JLD2.load("$(experiment_name)_experiment/blob_d_$(d)_n_$(n)_eps_$(epsilon(d,n)).jld2", "solution")
+            solution_blob2 = JLD2.load("$(experiment_name)_experiment/blob_simple_d_$(d)_n_$(n)_eps_$(epsilon(d,n)).jld2", "solution")
+            pdf_plt = pdf_plot([solution_sbtm, solution_blob1, solution_blob2], ["sbtm", "blob", "blob simple"], ρ, ts[end], ε)
+            push!(plots, pdf_plt)
+        end
+        plt_ = plot(plots..., layout = (1, length(plots)))
+        push!(pdf_plots_, plt_)
     end
-    plot(plots..., layout = (1, length(plots)))
+    plot(pdf_plots_..., layout = (length(pdf_plots_), 1), size = (1400, 800))
 end
 
 # Lp_error_plots = []
@@ -130,9 +134,4 @@ end
 # end
 # plt=plot(Lp_error_plots..., layout = (length(Lp_error_plots), 1), size = (1400, 800))
 
-pdf_plots_ = []
-for d in [1,2,3,5,10]
-    plt_ = marginal_pdf_experiment(d, experiment = pure_diffusion, experiment_name = "pure_diffusion")
-    push!(pdf_plots_, plt_)
-end
-plot(pdf_plots_..., layout = (length(pdf_plots_), 1), size = (1400, 800))
+plt_ = marginal_pdf_experiment([1,2,3,5,10], experiment = pure_diffusion, experiment_name = "pure_diffusion")

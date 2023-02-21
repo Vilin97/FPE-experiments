@@ -101,6 +101,6 @@ function do_experiment(ds, experiment, experiment_name; methods = [sbtm, blob], 
     print_timer()
 end
 
-for epsilon_choice in [(d,n) -> epsilon(d,n,1/2), (d,n) -> epsilon(d,n,1/3)]
+for epsilon_choice in [(d,n)->epsilon(d,n)]
     do_experiment([1,2,3,5,10], pure_diffusion, "pure_diffusion", methods = [blob], method_names = ["blob"], epsilon_choice = epsilon_choice)
 end
