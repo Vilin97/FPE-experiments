@@ -24,7 +24,7 @@ end
 
 function initialize_s!(s, ρ₀, xs :: AbstractArray{T, 3}; optimiser = Adam(10^-3), ε = T(10^-4), verbose = 1) where T
     verbose > 1 && println("Initializing NN \n$s")
-    ys = gradient(x -> score(ρ₀, x), xs)[1]
+    ys = score(ρ₀, xs)
     ys_sum_squares = norm(ys)^2
     square_error(s) = norm(s(xs) - ys)^2 / ys_sum_squares
     epoch = 0
@@ -39,13 +39,12 @@ function initialize_s!(s, ρ₀, xs :: AbstractArray{T, 3}; optimiser = Adam(10^
     epoch
 end
 
+# TODO preallocate memory for ζ
 function loss(s, xs :: AbstractArray{T, 3}, α = T(0.1)) where T
     ζ = randn(size(xs))
     denoise_val = ( dot(s(xs .+ α .* ζ), ζ) - dot(s(xs .- α .* ζ), ζ) ) / α
     (norm(s(xs))^2 + denoise_val)/size(xs, 3)
 end
-score(ρ, x) = convert(eltype(x), sum(logpdf(ρ, x)))
-propagate(x, t, Δt, b, D, s) = x + Δt * (b(x, t) - D(x, t)*s(x))
 
 """
 xs  : sample from initial probability distribution
@@ -83,10 +82,14 @@ function sbtm_solve(xs, ts :: AbstractVector{T}, b, D, s; epochs = 25, record_s_
         record_s_values && (s_values[:, :, :, k] = s(xs))
     end
     cb = PresetTimeCallback(ts, affect!, save_positions=(false,false))
-    function f!(dxs, xs, p, t) 
-        dxs .= b(xs, t) .- D(xs, t) .* s(xs)
-    end
-    ode_problem = ODEProblem(f!, initial, tspan)
+    
+    p = (b, D, s)
+    ode_problem = ODEProblem(sbtm_f!, initial, tspan, p)
     solution = solve(ode_problem, alg = Euler(), saveat=ts, tstops = ts, callback = cb)
     solution, s_values, losses
+end
+
+function sbtm_f!(dxs, xs, p, t) 
+    b, D, s = p
+    dxs .= b(xs, t) .- D(xs, t) .* s(xs)
 end

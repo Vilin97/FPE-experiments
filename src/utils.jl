@@ -1,8 +1,14 @@
 using Statistics, LinearAlgebra
-using Distributions: MvNormal
+using Distributions
 using HCubature
 
-# mollifier ϕ_ε
+"∇log ρ(x) for each column x of xs."
+# score(ρ :: MultivariateDistribution, xs) = mapslices(x -> gradlogpdf(ρ, x), xs, dims=1) # this is slow
+score(ρ :: MultivariateDistribution, xs :: AbstractArray{T,1}) where T = gradlogpdf(ρ, xs)
+score(ρ :: MultivariateDistribution, xs :: AbstractArray{T,2}) where T = reshape(hcat([gradlogpdf(ρ, @view xs[:,i]) for i in axes(xs, 2)]...), size(xs))
+score(ρ :: MultivariateDistribution, xs :: AbstractArray{T,3}) where T = reshape(hcat([gradlogpdf(ρ, @view xs[:,i,j]) for i in axes(xs, 2), j in axes(xs, 3)]...), size(xs))
+
+"gaussian mollifier pdf(MvNormal(ε/2*I(length(x))), x)"
 mol(ε, x) = exp(-norm(x)^2/ε)/sqrt((π*ε)^length(x)) # = pdf(MvNormal(ε/2*I(length(x))), x)
 grad_mol(ε, x) = -2/ε*mol(ε, x) .* x
 Mol(ε, x, xs) = sum( mol(ε, x - x_q) for x_q in eachslice(xs, dims=length(size(xs))) )
