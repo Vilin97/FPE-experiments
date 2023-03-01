@@ -1,4 +1,4 @@
-using Distributions, Plots, TimerOutputs, Polynomials, JLD2, DifferentialEquations, OrdinaryDiffEq, Flux, Zygote
+using Distributions, Plots, TimerOutputs, Polynomials, JLD2, DifferentialEquations, OrdinaryDiffEq, Flux, Roots
 using Random: seed!
 
 plotly()
@@ -18,7 +18,7 @@ function solve_diffusion(d, n)
 end
 
 "plot the marginal pdfs at time t"
-function pdf_plot(solutions, labels, true_solution, t, ε)
+function pdf_plot(solutions, labels, true_solution, t, ε; true_regularized = nothing)
     d, = size(true_solution(t))
     u = reshape(solutions[1](t), d, :)
     n = size(u, 2)
@@ -27,6 +27,10 @@ function pdf_plot(solutions, labels, true_solution, t, ε)
     label_ = (d==1 && n==200) ? "true" : nothing
     true_marginal = marginal(true_solution(t))
     plot!(plt, pdf_range, [pdf(true_marginal, [x]) for x in pdf_range], label = label_)
+    if true_regularized !== nothing
+        label_ = (d==1 && n==200) ? "true regularized" : nothing
+        plot!(plt, pdf_range, [pdf(marginal(true_regularized(t)), [x]) for x in pdf_range], label = label_)
+    end
     for (solution, label) in zip(solutions, labels)
         u = reshape(solution(t), d, n)[1, :]
         label_ = (d==1 && n==200) ? label : nothing
@@ -115,10 +119,14 @@ function marginal_pdf_experiment(ds; experiment = pure_diffusion, experiment_nam
         _, ts, _, _, _, ρ = experiment(d, ns[1])
         plots = []
         for n in ns
+            t_plot = ts[end]
+            f(σ,t) = σ + epsilon(d,n)log(σ) - (2t + tr(cov(ρ(0)))/d + epsilon(d,n)log(tr(cov(ρ(0)))/d))
+            σ(t) = solve(ZeroProblem(σ -> f(σ,t), tr(cov(ρ(t)))/d )) # the variance of the regularized solution
+            true_regularized(t) = MvNormal(σ(t) * I(d))
             solution_sbtm = JLD2.load("$(experiment_name)_experiment/sbtm_d_$(d)_n_$(n).jld2", "solution")
             solution_blob1 = JLD2.load("$(experiment_name)_experiment/blob_d_$(d)_n_$(n)_eps_$(epsilon(d,n)).jld2", "solution")
             solution_blob2 = JLD2.load("$(experiment_name)_experiment/blob_simple_d_$(d)_n_$(n)_eps_$(epsilon(d,n)).jld2", "solution")
-            pdf_plt = pdf_plot([solution_sbtm, solution_blob1, solution_blob2], ["sbtm", "blob", "blob simple"], ρ, ts[end], ε)
+            pdf_plt = pdf_plot([solution_sbtm, solution_blob1, solution_blob2], ["sbtm", "blob", "blob simple"], ρ, t_plot, ε; true_regularized = true_regularized)
             push!(plots, pdf_plt)
         end
         plt_ = plot(plots..., layout = (1, length(plots)))

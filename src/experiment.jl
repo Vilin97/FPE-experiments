@@ -5,6 +5,8 @@ include("utils.jl")
 include("sbtm.jl")
 include("blob.jl")
 
+# TODO change saving to only save trajectories and kwargs, not the full ODESolution.
+
 # first example from paper
 function moving_trap_experiment_combined(N, num_samples, num_timestamps; folder = "data")
     moving_trap_experiment(N, num_samples, num_timestamps, sbtm, "sbtm"; folder = folder)
