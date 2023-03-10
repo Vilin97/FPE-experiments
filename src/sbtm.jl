@@ -9,20 +9,17 @@ using Flux: params
 
 function initialize_s(ρ₀, xs, size_hidden, num_hidden; activation = relu, verbose = 0, kwargs...)
     d_bar, N, n = size(xs)
-    d = d_bar*N
     s = Chain(
-        # xs -> reshape(xs, d, n),
         Dense(d_bar => size_hidden, activation),
         repeat([Dense(size_hidden, size_hidden), activation], num_hidden-1)...,
         Dense(size_hidden => d_bar)
-        # xs -> reshape(xs, d_bar, N, n)
         )
     @timeit "NN init" epochs = initialize_s!(s, ρ₀, xs; verbose = verbose, kwargs...)
     verbose > 0 && println("Done with NN initialization. Took $epochs epochs.")
     return s
 end
 
-function initialize_s!(s, ρ₀, xs :: AbstractArray{T, 3}; optimiser = Adam(10^-3), ε = T(10^-4), verbose = 1) where T
+function initialize_s!(s, ρ₀, xs :: AbstractArray{T}; optimiser = Adam(10^-3), ε = T(10^-4), verbose = 1) where T
     verbose > 1 && println("Initializing NN \n$s")
     ys = score(ρ₀, xs)
     ys_sum_squares = norm(ys)^2
@@ -39,11 +36,10 @@ function initialize_s!(s, ρ₀, xs :: AbstractArray{T, 3}; optimiser = Adam(10^
     epoch
 end
 
-# TODO preallocate memory for ζ
-function loss(s, xs :: AbstractArray{T, 3}, α = T(0.1)) where T
-    ζ = randn(size(xs))
-    denoise_val = ( dot(s(xs .+ α .* ζ), ζ) - dot(s(xs .- α .* ζ), ζ) ) / α
-    (norm(s(xs))^2 + denoise_val)/size(xs, 3)
+function loss(s, xs :: AbstractArray{T}, α = T(0.1)) where T
+    ζ = randn(T, size(xs))
+    denoise_val = ( s(xs .+ α .* ζ) ⋅ ζ - s(xs .- α .* ζ) ⋅ ζ ) / α
+    (norm(s(xs))^2 + denoise_val)/num_particles(xs)
 end
 
 """
@@ -84,12 +80,23 @@ function sbtm_solve(xs, ts :: AbstractVector{T}, b, D, s; epochs = 25, record_s_
     cb = PresetTimeCallback(ts, affect!, save_positions=(false,false))
     
     p = (b, D, s)
-    ode_problem = ODEProblem(sbtm_f!, initial, tspan, p)
+    ode_problem = ODEProblem(fpe_f!, initial, tspan, p)
     solution = solve(ode_problem, alg = Euler(), saveat=ts, tstops = ts, callback = cb)
     solution, s_values, losses
 end
 
-function sbtm_f!(dxs, xs, p, t) 
+function fpe_f!(dxs, xs, p, t) 
     b, D, s = p
     dxs .= b(xs, t) .- D(xs, t) .* s(xs)
+end
+
+######## Landau ########
+function landau_f!(dxs, xs, pars, t)
+    A, s = pars
+    n = num_particles(xs)
+    @views for p in 1:n, q in 1:n
+        xp = xs[:,p]
+        xq = xs[:,q]
+        dxs[:,p] .+= A(xp - xq)*(s(xq) - s(xp))
+    end
 end
