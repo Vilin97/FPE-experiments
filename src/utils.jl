@@ -1,16 +1,16 @@
-using Statistics, LinearAlgebra
-using Distributions
-using HCubature
+using Statistics, LinearAlgebra, Distributions, HCubature, Zygote
+import Distributions.gradlogpdf
 
-num_particles(xs :: AbstractArray{T, 3}) = size(xs, 3)
-num_particles(xs :: AbstractArray{T, 2}) = size(xs, 2)
-num_particles(xs :: AbstractArray{T, 1}) = size(xs, 1)
+num_particles(xs :: AbstractArray{T, 3}) where T = size(xs, 3)
+num_particles(xs :: AbstractArray{T, 2}) where T = size(xs, 2)
+num_particles(xs :: AbstractArray{T, 1}) where T = size(xs, 1)
 
 "∇log ρ(x) for each column x of xs."
-# score(ρ :: MultivariateDistribution, xs) = mapslices(x -> gradlogpdf(ρ, x), xs, dims=1) # this is slow
-score(ρ :: MultivariateDistribution, xs :: AbstractArray{T,1}) where T = gradlogpdf(ρ, xs)
-score(ρ :: MultivariateDistribution, xs :: AbstractArray{T,2}) where T = reshape(hcat([gradlogpdf(ρ, @view xs[:,i]) for i in axes(xs, 2)]...), size(xs))
-score(ρ :: MultivariateDistribution, xs :: AbstractArray{T,3}) where T = reshape(hcat([gradlogpdf(ρ, @view xs[:,i,j]) for i in axes(xs, 2), j in axes(xs, 3)]...), size(xs))
+# score(ρ, xs) = mapslices(x -> gradlogpdf(ρ, x), xs, dims=1) # this is slow
+score(ρ, xs :: AbstractArray{T,1}) where T = gradlogpdf(ρ, xs)
+score(ρ, xs :: AbstractArray{T,2}) where T = reshape(hcat([gradlogpdf(ρ, @view xs[:,i]) for i in axes(xs, 2)]...), size(xs))
+score(ρ, xs :: AbstractArray{T,3}) where T = reshape(hcat([gradlogpdf(ρ, @view xs[:,i,j]) for i in axes(xs, 2), j in axes(xs, 3)]...), size(xs))
+gradlogpdf(f :: Function, x) = gradient(log ∘ f, x)[1]
 
 "gaussian mollifier pdf(MvNormal(ε/2*I(length(x))), x)"
 mol(ε, x) = exp(-norm(x)^2/ε)/sqrt((π*ε)^length(x)) # = pdf(MvNormal(ε/2*I(length(x))), x)
@@ -88,25 +88,24 @@ end
 "set ε ~ n^(k/d) to account for particles getting sparser with dimension. At c = 1, k = 1, epsilon(2,4000) = 0.05"
 epsilon(d, n, c = 1., k=1) = c * 4000. ^(k/2) / (20. * n^(k/d))
 
-
-
 ######## Landau equation in 3D ########
 epsilon_landau(n, L = 4.) = 0.64 * (2L/n)^1.98 # h = 2L/n, and ε = 0.64 h^1.98
 
-function landau_3D(n, dt = 0.005, t_end = 0.5)
-    t_start = 5.5
-    K(t) = 1 - exp(-(t+t_start)/6)
-    f(x, K) = pdf(MvNormal(K * I(3)), x) * ((5K-3)/(2K) + (1-K)/(2K^2)*norm(x)^2) # target density
+function landau_3D(n, dt = 0.005)
+    K(t) = 1 - exp(-(t+5.5)/6)
+    f(x, t) = K(t)^2 * pdf(MvNormal(I(3)), x) * ((5K(t)-3)/(2K(t)) + (1-K(t))/(2K(t)^2)*norm(x)^2) # target density
     δ = 0.3 # how close the proposal distribution is to the target density
     M = 2 # upper bound on the ratio f/g in rejection sampling
     xs = zeros(3, n)
     for i in 1:n
         xs[:, i] = rejection_sample(x -> f(x, K(0.)), MvNormal(K(0.)/(1-δ) * I(3)), M)
     end
-    tspan = (t_start, t_end)
+    tspan = (5.5,6.)
     ts = tspan[1]:dt:tspan[2]
 
-    xs, ts, f, K
+    A(z) = 1/24 * (norm(z)^2 * I(3) - z*z')
+
+    xs, ts, A, f, K
 end
 
 function rejection_sample(target_density, proposal_dist, M)

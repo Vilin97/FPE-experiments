@@ -1,6 +1,6 @@
 # implementing the algorithm from "probability flow solution of the fokker-planck equation" 2022
 
-using Flux, LinearAlgebra, TimerOutputs
+using Flux, LinearAlgebra, DifferentialEquations, DiffEqCallbacks
 using Distributions: MvNormal, logpdf
 using Zygote: gradient, withgradient
 using Flux.Optimise: Adam
@@ -8,7 +8,7 @@ using Flux: params
 
 
 function initialize_s(ρ₀, xs, size_hidden, num_hidden; activation = relu, verbose = 0, kwargs...)
-    d_bar, N, n = size(xs)
+    d_bar = size(xs,1)
     s = Chain(
         Dense(d_bar => size_hidden, activation),
         repeat([Dense(size_hidden, size_hidden), activation], num_hidden-1)...,
@@ -51,6 +51,7 @@ n   : number of particles
 s   : NN to approximate score ∇log ρ
 """
 function sbtm(xs, ts, b, D; ρ₀ = nothing, s = nothing, kwargs...)
+    isnothing(s) && isnothing(ρ₀) && error("Must provide either s or ρ₀.")
     isnothing(s) ? (s_new = initialize_s(ρ₀, xs, 100, 1; kwargs...)) : (s_new = deepcopy(s))
     solution, s_values, losses = sbtm_solve(Float32.(xs), Float32.(ts), b, D, s_new; kwargs...)
     log = Dict("s_values" => s_values, "losses" => losses)
@@ -88,15 +89,4 @@ end
 function fpe_f!(dxs, xs, p, t) 
     b, D, s = p
     dxs .= b(xs, t) .- D(xs, t) .* s(xs)
-end
-
-######## Landau ########
-function landau_f!(dxs, xs, pars, t)
-    A, s = pars
-    n = num_particles(xs)
-    @views for p in 1:n, q in 1:n
-        xp = xs[:,p]
-        xq = xs[:,q]
-        dxs[:,p] .+= A(xp - xq)*(s(xq) - s(xp))
-    end
 end
