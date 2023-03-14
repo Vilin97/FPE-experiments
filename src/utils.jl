@@ -94,14 +94,14 @@ epsilon(d, n, c = 1., k=1) = c * 4000. ^(k/2) / (20. * n^(k/d))
 epsilon_landau(n, L = 4.) = 0.64 * (2L/n)^1.98 # h = 2L/n, and ε = 0.64 h^1.98
 
 function landau_3D(n, dt = 0.005, t_end = 0.5)
-    K(t) = 1 - exp(-(t+5.5)/6)
-    f(x, K) = pdf(MvNormal(K * I(3)), x) * ((5K-3/(2K) + (1-K)/(2K^2)*norm(x)^2)) # target density
+    t_start = 5.5
+    K(t) = 1 - exp(-(t+t_start)/6)
+    f(x, K) = pdf(MvNormal(K * I(3)), x) * ((5K-3)/(2K) + (1-K)/(2K^2)*norm(x)^2) # target density
     δ = 0.3 # how close the proposal distribution is to the target density
     M = 2 # upper bound on the ratio f/g in rejection sampling
-    t_start = 5.5
     xs = zeros(3, n)
     for i in 1:n
-        xs[:, i] = rejection_sample(x -> f(x, K(t_start)), MvNormal(K(t_start)/(1-δ) * I(3)), M)
+        xs[:, i] = rejection_sample(x -> f(x, K(0.)), MvNormal(K(0.)/(1-δ) * I(3)), M)
     end
     tspan = (t_start, t_end)
     ts = tspan[1]:dt:tspan[2]
