@@ -1,9 +1,8 @@
-using JLD2
+using JLD2, TimerOutputs
 using Random: seed!
 
 include("utils.jl")
 include("sbtm.jl")
-include("landau/sbtm.jl")
 include("blob.jl")
 
 # TODO change saving to only save trajectories and kwargs, not the full ODESolution.
@@ -104,6 +103,28 @@ function do_experiment(ds, experiment, experiment_name; methods = [sbtm, blob], 
     print_timer()
 end
 
-for epsilon_choice in [(d,n)->epsilon(d,n)]
-    do_experiment([1,2,3,5,10], landau, "landau", methods = [blob], method_names = ["blob"], epsilon_choice = epsilon_choice)
+# for epsilon_choice in [(d,n)->epsilon(d,n)]
+#     do_experiment([1,2,3,5,10], pure_diffusion, "pure_diffusion", methods = [blob], method_names = ["blob"], epsilon_choice = epsilon_choice)
+# end
+
+function landau_experiment()
+    # ns = [200, 1000, 2000, 4000]
+    ns = [50]
+    reset_timer!()
+    for n in ns
+        println("n = $n")
+        seed!(1234)
+        xs, ts, A, ρ = landau(n)
+        @timeit "n = $n" solution = sbtm(xs, ts, A; ρ₀ = x->ρ(x,0.))
+        JLD2.save("$landau_experiment/sbtm_n_$(n).jld2", "solution", solution)
+    end
+    print_timer()
 end
+
+# landau_experiment()
+
+# TODO: Getting NaNs in the solution and loss. Loss blows up. Why?
+# n = 100
+# xs, ts, A, ρ = landau(n)
+# solution = sbtm(xs, ts, A; ρ₀ = x->ρ(x,0.), verbose = 2, size_hidden = 300)
+# initialize_s(x->ρ(x,0.), xs, 100, 1, verbose = 2)

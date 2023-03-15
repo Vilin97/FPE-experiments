@@ -19,7 +19,7 @@ function initialize_s(ρ₀, xs, size_hidden, num_hidden; activation = relu, ver
     return s
 end
 
-function initialize_s!(s, ρ₀, xs :: AbstractArray{T}; optimiser = Adam(10^-3), ε = T(10^-4), verbose = 1) where T
+function initialize_s!(s, ρ₀, xs :: AbstractArray{T}; optimiser = Adam(10^-3), ε = T(10^-4), verbose = 0) where T
     verbose > 1 && println("Initializing NN \n$s")
     ys = score(ρ₀, xs)
     ys_sum_squares = norm(ys)^2
@@ -50,9 +50,9 @@ D   : Rᵈ × R → Rᵈˣᵈ or R
 n   : number of particles
 s   : NN to approximate score ∇log ρ
 """
-function sbtm(xs, ts, b, D; ρ₀ = nothing, s = nothing, kwargs...)
+function sbtm(xs, ts, b, D; ρ₀ = nothing, s = nothing, size_hidden=100, num_hidden=1, kwargs...)
     isnothing(s) && isnothing(ρ₀) && error("Must provide either s or ρ₀.")
-    isnothing(s) ? (s_new = initialize_s(ρ₀, xs, 100, 1; kwargs...)) : (s_new = deepcopy(s))
+    isnothing(s) ? (s_new = initialize_s(ρ₀, xs, size_hidden, num_hidden; kwargs...)) : (s_new = deepcopy(s))
     solution, s_values, losses = sbtm_solve(Float32.(xs), Float32.(ts), b, D, s_new; kwargs...)
     log = Dict("s_values" => s_values, "losses" => losses)
     solution

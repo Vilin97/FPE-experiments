@@ -15,9 +15,9 @@ D   : Rᵈ × R → Rᵈˣᵈ or R
 n   : number of particles
 s   : NN to approximate score ∇log ρ
 """
-function sbtm(xs, ts, A; ρ₀ = nothing, s = nothing, kwargs...)
+function sbtm(xs, ts, A; ρ₀ = nothing, s = nothing, size_hidden=100, num_hidden=1, kwargs...)
     isnothing(s) && isnothing(ρ₀) && error("Must provide either s or ρ₀.")
-    isnothing(s) ? (s_new = initialize_s(ρ₀, xs, 100, 1; kwargs...)) : (s_new = deepcopy(s))
+    isnothing(s) ? (s_new = initialize_s(ρ₀, xs, size_hidden, num_hidden; kwargs...)) : (s_new = deepcopy(s))
     solution, s_values, losses = sbtm_solve(Float32.(xs), Float32.(ts), A, s_new; kwargs...)
     log = Dict("s_values" => s_values, "losses" => losses)
     solution
@@ -35,12 +35,13 @@ function sbtm_solve(xs, ts :: AbstractVector{T}, A, s; epochs = 25, record_s_val
         k += 1
         xs = integrator.u
         state = Flux.setup(optimiser, s)
-        for epoch in 1:epochs
+        @timeit "update NN" for epoch in 1:epochs
             loss_value, grads = withgradient(s -> loss(s, xs), s)
             Flux.update!(state, s, grads[1])
             record_losses && (losses[epoch, k] = loss_value)
-            verbose > 1 && println("Epoch $epoch, loss = $loss_value.")
+            verbose > 2 && println("Epoch $epoch, loss = $loss_value.")
         end
+        verbose > 1 && println("loss = $(loss(s, xs)).")
         record_s_values && (s_values[:, :, :, k] = s(xs))
     end
     cb = PresetTimeCallback(ts, affect!, save_positions=(false,false))
@@ -54,9 +55,15 @@ end
 function landau_f!(dxs, xs, pars, t)
     A, s = pars
     n = num_particles(xs)
-    @views for p in 1:n, q in 1:n
+    s_values = s(xs)
+    @timeit "propagate particles" @views for p in 1:n, q in 1:n
         xp = xs[:,p]
         xq = xs[:,q]
-        dxs[:,p] .+= A(xp - xq)*(s(xq) - s(xp))
+        dxs[:,p] .+= A(xp - xq)*(s_values[:,q] - s_values[:,p])
     end
+    # @timeit "propagate particles" @views for p in 1:n, q in 1:n
+    #     xp = xs[:,p]
+    #     xq = xs[:,q]
+    #     dxs[:,p] .+= A(xp - xq)*(s(xq) - s(xp))
+    # end
 end
