@@ -91,7 +91,7 @@ epsilon(d, n, c = 1., k=1) = c * 4000. ^(k/2) / (20. * n^(k/d))
 ######## Landau equation in 3D ########
 epsilon_landau(n, L = 4.) = 0.64 * (2L/n)^1.98 # h = 2L/n, and ε = 0.64 h^1.98
 
-function landau_3D(n, dt = 0.005)
+function landau(n, dt = 0.005)
     K(t) = 1 - exp(-(t+5.5)/6)
     f(x, t) = K(t)^2 * pdf(MvNormal(I(3)), x) * ((5K(t)-3)/(2K(t)) + (1-K(t))/(2K(t)^2)*norm(x)^2) # target density
     δ = 0.3 # how close the proposal distribution is to the target density

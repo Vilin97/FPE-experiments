@@ -60,7 +60,3 @@ function landau_f!(dxs, xs, pars, t)
         dxs[:,p] .+= A(xp - xq)*(s(xq) - s(xp))
     end
 end
-
-n = 10
-xs, ts, A, h, _ = landau_3D(n)
-sbtm(xs, ts, A; ρ₀ = x->h(x,0.), verbose = 1)

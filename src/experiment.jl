@@ -3,6 +3,7 @@ using Random: seed!
 
 include("utils.jl")
 include("sbtm.jl")
+include("landau/sbtm.jl")
 include("blob.jl")
 
 # TODO change saving to only save trajectories and kwargs, not the full ODESolution.
@@ -104,5 +105,5 @@ function do_experiment(ds, experiment, experiment_name; methods = [sbtm, blob], 
 end
 
 for epsilon_choice in [(d,n)->epsilon(d,n)]
-    do_experiment([1,2,3,5,10], pure_diffusion, "pure_diffusion", methods = [blob], method_names = ["blob"], epsilon_choice = epsilon_choice)
+    do_experiment([1,2,3,5,10], landau, "landau", methods = [blob], method_names = ["blob"], epsilon_choice = epsilon_choice)
 end
