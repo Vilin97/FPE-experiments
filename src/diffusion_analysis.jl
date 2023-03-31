@@ -2,9 +2,9 @@ using Distributions, Plots, TimerOutputs, Polynomials, JLD2, DifferentialEquatio
 using Random: seed!
 
 plotly()
-include("../src/utils.jl")
-include("../src/blob.jl")
-include("../src/sbtm.jl")
+include("utils.jl")
+include("blob.jl")
+include("sbtm.jl")
 
 "Solve the pure diffusion problem of dimension d with n particles."
 function solve_diffusion(d, n)

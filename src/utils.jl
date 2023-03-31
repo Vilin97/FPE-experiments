@@ -1,6 +1,17 @@
 using Statistics, LinearAlgebra, Distributions, HCubature, Zygote
 import Distributions.gradlogpdf
 
+const I3 = I(3)
+
+"sum of squares of the elements of z"
+function normsq(z)
+    res = zero(eltype(z))
+    @fastmath for zi in z
+        res += zi*zi
+    end
+    res
+end
+
 num_particles(xs :: AbstractArray{T, 3}) where T = size(xs, 3)
 num_particles(xs :: AbstractArray{T, 2}) where T = size(xs, 2)
 num_particles(xs :: AbstractArray{T, 1}) where T = size(xs, 1)
@@ -93,19 +104,21 @@ epsilon_landau(n, L = 4.) = 0.64 * (2L/n)^1.98 # h = 2L/n, and ε = 0.64 h^1.98
 
 function landau(n; dt = 0.005)
     K(t) = 1 - exp(-(t+5.5)/6)
-    f(x, t) = (k=1 - exp(-(t+5.5)/6); k^2 * pdf(MvNormal(I(3)), x) * ((5k-3)/(2k) + (1-k)/(2k^2)*norm(x)^2)) # target density
+    # f(x, t) = (k=1 - exp(-(t+5.5)/6); (2π*k)^(-3/2) * exp(-norm(x)^2/(2k)) * ((5k-3)/(2k) + (1-k)/(2k^2)*norm(x)^2)) # target density
+    f(x, t) = (k=1 - exp(-(t+20.)/6); (2π*k)^(-3/2) * exp(-norm(x)^2/(2k)) * ((5k-3)/(2k) + (1-k)/(2k^2)*norm(x)^2)) # target density
     δ = 0.3 # how close the proposal distribution is to the target density
     M = 2 # upper bound on the ratio f/g in rejection sampling
     xs = zeros(3, n)
     for i in 1:n
         xs[:, i] = rejection_sample(x -> f(x, K(0.)), MvNormal(K(0.)/(1-δ) * I(3)), M)
     end
-    tspan = (5.5,6.)
+    tspan = (0.,0.5)
     ts = tspan[1]:dt:tspan[2]
 
-    A(z) = 1/24 * (norm(z)^2 * I(3) - z*z')
+    A!(a, z) = a .= eltype(z)(1/24) .* (normsq(z) .* I3 .- z.*z')
+    # A(z) = eltype(z)(1/24) * (norm(z)^2 * I(3) - z*z')
 
-    xs, ts, A, f
+    xs, ts, A!, f
 end
 
 function rejection_sample(target_density, proposal_dist, M)

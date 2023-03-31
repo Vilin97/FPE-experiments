@@ -15,7 +15,7 @@ function initialize_s(ρ₀, xs, size_hidden, num_hidden; activation = relu, ver
         Dense(size_hidden => d_bar)
         )
     @timeit "NN init" epochs = initialize_s!(s, ρ₀, xs; verbose = verbose, kwargs...)
-    verbose > 0 && println("Done with NN initialization. Took $epochs epochs.")
+    verbose > 0 && println("Initialized the NN in $epochs epochs. Loss = $(loss(s, xs)).")
     return s
 end
 
@@ -70,7 +70,7 @@ function sbtm_solve(xs, ts :: AbstractVector{T}, b, D, s; epochs = 25, record_s_
         k += 1
         xs = integrator.u
         state = Flux.setup(optimiser, s)
-        for epoch in 1:epochs
+        @timeit "NN train" for epoch in 1:epochs
             loss_value, grads = withgradient(s -> loss(s, xs), s)
             Flux.update!(state, s, grads[1])
             record_losses && (losses[epoch, k] = loss_value)
@@ -88,5 +88,5 @@ end
 
 function fpe_f!(dxs, xs, p, t) 
     b, D, s = p
-    dxs .= b(xs, t) .- D(xs, t) .* s(xs)
+    @timeit "propagate" dxs .= b(xs, t) .- D(xs, t) .* s(xs)
 end
