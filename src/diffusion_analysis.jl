@@ -72,20 +72,6 @@ function fixed_n_experiment(n = 1000)
     pdf_plot, ent_plot, l2_plot, big_plot
 end
 
-function Lp_error_plot(ns, errors, labels, colors, t, d, experiment_name, k, p)
-    Lp_errors_plot = plot(title = "$(d)d $experiment_name $k-marginal L$p error at t = $t, log-log", ylabel = "L$p error from true pdf", xaxis = :log, yaxis = :log)
-    dense_ns = range(ns[1], ns[end], length = 1000)
-    for (error, label, color) in zip(errors, labels, colors)
-        error_log = log.(error)
-        fit_log = Polynomials.fit(log.(ns), error_log, 1)
-        slope = round(fit_log.coeffs[2], digits = 2)
-        plot!(Lp_errors_plot, ns, error, label = (d==1 && t==0.5) ? "t = $t, $label" : nothing, marker = :circle, color = color)
-        poly = exp.( fit_log.(log.(dense_ns)) )
-        plot!(Lp_errors_plot, dense_ns, poly, label = "d = $d, t = $t, $label slope $slope", color = color, opacity = 0.4)
-    end
-    Lp_errors_plot
-end
-
 "Change n, plot Lp error of k-particles marginal at end time vs n."
 function Lp_error_experiment(d; p=2, k=1, verbose = 0, experiment = pure_diffusion, experiment_name = "pure_diffusion")
     @show d

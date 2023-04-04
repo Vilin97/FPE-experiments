@@ -110,17 +110,19 @@ function do_experiment(ds, experiment, experiment_name; methods = [sbtm, blob], 
 end
 
 function landau_experiment()
-    # ns = [200, 1000, 2000, 4000]
-    ns = [1000]
+    # ns = [50, 100, 200, 400, 500, 1000, 2000, 3000, 4000, 5000, 6000]
+    ns = [8000, 10_000]
     reset_timer!()
     for n in ns
         println("n = $n")
         seed!(1234)
-        xs, ts, A, ρ = landau(n)
-        @timeit "n = $n" solution = sbtm(xs, ts, A; ρ₀ = x->ρ(x,0.))
-        JLD2.save("$landau_experiment/sbtm_n_$(n).jld2", "solution", solution)
+        xs, ts, ρ = landau(n)
+        @timeit "n = $n" solution = sbtm_landau(xs, ts; ρ₀ = x->ρ(x,0.))
+        JLD2.save("landau_experiment/sbtm_n_$(n).jld2", "solution", solution)
     end
     print_timer()
 end
 
 landau_experiment()
+
+# JLD2.load("landau_experiment/sbtm_n_4000.jld2", "solution")
