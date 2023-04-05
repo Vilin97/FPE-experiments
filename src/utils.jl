@@ -30,7 +30,7 @@ score(ρ, xs :: AbstractArray{T,3}) where T = reshape(hcat([gradlogpdf(ρ, @view
 gradlogpdf(f :: Function, x) = gradient(log ∘ f, x)[1]
 
 "gaussian mollifier pdf(MvNormal(ε/2*I(length(x))), x)"
-mol(ε, x) = exp(-norm(x)^2/ε)/sqrt((π*ε)^length(x)) # = pdf(MvNormal(ε/2*I(length(x))), x)
+mol(ε, x) = exp(-sum(abs2, x)/ε)/sqrt((π*ε)^length(x)) # = pdf(MvNormal(ε/2*I(length(x))), x)
 grad_mol(ε, x) = -2/ε*mol(ε, x) .* x
 Mol(ε, x, xs) = sum( mol(ε, x - x_q) for x_q in eachslice(xs, dims=length(size(xs))) )
 Mol(ε, x, xs :: AbstractVector) = sum( mol(ε, x - x_q) for x_q in xs )
@@ -111,15 +111,14 @@ epsilon(d, n, c = 1., k=1) = c * 4000. ^(k/2) / (20. * n^(k/d))
 ######## Landau equation in 3D ########
 epsilon_landau(n, L = 4.) = 0.64 * (2L/n)^1.98 # h = 2L/n, and ε = 0.64 h^1.98
 
-function landau(n; dt = 0.01)
-    K(t) = 1 - exp(-(t+5.5)/6)
-    # f(x, t) = (k=1 - exp(-(t+5.5)/6); (2π*k)^(-3/2) * exp(-norm(x)^2/(2k)) * ((5k-3)/(2k) + (1-k)/(2k^2)*norm(x)^2)) # target density
-    f(x, t) = (k=1 - exp(-(t+20.)/6); (2π*k)^(-3/2) * exp(-norm(x)^2/(2k)) * ((5k-3)/(2k) + (1-k)/(2k^2)*norm(x)^2)) # target density
+function landau(n, start_time; dt = 0.01)
+    K(t) = 1 - exp(-(t+start_time)/6)
+    f(x, t) = (k=1 - exp(-(t+start_time)/6); (2π*k)^(-3/2) * exp(-sum(abs2, x)/(2k)) * ((5k-3)/(2k) + (1-k)/(2k^2)*norm(x)^2)) # target density
     δ = 0.3 # how close the proposal distribution is to the target density
-    M = 2 # upper bound on the ratio f/g in rejection sampling
+    M = 3 # upper bound on the ratio f/g in rejection sampling
     xs = zeros(3, n)
     for i in 1:n
-        xs[:, i] = rejection_sample(x -> f(x, K(0.)), MvNormal(K(0.)/(1-δ) * I(3)), M)
+        xs[:, i] = rejection_sample(x -> f(x, 0), MvNormal(K(0.)/(1-δ) * I(3)), M)
     end
     tspan = (0.,0.5)
     ts = tspan[1]:dt:tspan[2]

@@ -19,13 +19,16 @@ s   : NN to approximate score ∇log ρ
 function sbtm_landau(xs, ts; ρ₀ = nothing, s = nothing, size_hidden=100, num_hidden=1, kwargs...)
     isnothing(s) && isnothing(ρ₀) && error("Must provide either s or ρ₀.")
     isnothing(s) ? (s_new = initialize_s(ρ₀, xs, size_hidden, num_hidden; kwargs...)) : (s_new = deepcopy(s))
-    solution = sbtm_landau_solve(Float32.(xs), Float32.(ts), s_new; kwargs...)
-    solution
+    solution, s_values, losses = sbtm_landau_solve(Float32.(xs), Float32.(ts), s_new; kwargs...)
 end
 
-function sbtm_landau_solve(xs, ts :: AbstractVector{T}, s; epochs = 25, verbose = 0, optimiser = Adam(10^-4), kwargs...) where T
+function sbtm_landau_solve(xs, ts :: AbstractVector{T}, s; epochs = 25, verbose = 0, optimiser = Adam(10^-4), record_s_values = false, record_losses = false, kwargs...) where T
     tspan = (zero(T), ts[end])
     initial = xs
+    s_values = zeros(T, size(xs)..., length(ts))
+    # record_s_values && (s_values[:, :, 1] .= s(xs))
+    losses = zeros(T, epochs, length(ts))
+    k = 1
     # train s_ in a callback
     function affect!(integrator)
         xs = integrator.u
@@ -33,19 +36,22 @@ function sbtm_landau_solve(xs, ts :: AbstractVector{T}, s; epochs = 25, verbose 
         @timeit "update NN" for epoch in 1:epochs
             loss_value, grads = withgradient(s -> loss(s, xs), s)
             Flux.update!(state, s, grads[1])
+            record_losses && (losses[epoch, k] = loss_value)
             verbose > 2 && println("Epoch $epoch, loss = $loss_value.")
         end
         verbose > 1 && println("loss = $(loss(s, xs)).")
+        record_s_values && (s_values[:, :, k] .= s(xs))
+        k += 1
     end
     cb = PresetTimeCallback(ts, affect!, save_positions=(false,false))
     
-    s_values = similar(s(xs))
+    s_values_temp = similar(s(xs))
     z = similar(xs[:,1])
     v = similar(xs[:,1])
-    p = (s, s_values, z, v)
+    p = (s, s_values_temp, z, v)
     ode_problem = ODEProblem(landau_f!, initial, tspan, p)
     solution = solve(ode_problem, alg = Euler(), saveat=ts, tstops = ts, callback = cb)
-    solution :: ODESolution
+    solution :: ODESolution, s_values, losses
 end
 
 function landau_f!(dxs, xs, pars, t)
@@ -56,11 +62,7 @@ function landau_f!(dxs, xs, pars, t)
     @timeit "propagate particles" @views for p in 1:n, q in 1:n
         z .= xs[:,p] .- xs[:,q]
         v .= s_values[:,q] .- s_values[:,p]
-        dotzv = fastdot(z,v)
-        normsqz = normsq(z)
-        v .*= normsqz
-        v .-= dotzv .* z
-        dxs[:,p] .+= v
+        dxs[:,p] .+=  v .* normsq(z) .- fastdot(z,v) .* z
     end
     dxs ./= 24*n
     nothing

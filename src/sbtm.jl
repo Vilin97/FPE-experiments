@@ -19,7 +19,7 @@ function initialize_s(ρ₀, xs, size_hidden, num_hidden; activation = relu, ver
     return s
 end
 
-function initialize_s!(s, ρ₀, xs :: AbstractArray{T}; optimiser = Adam(10^-3), ε = T(10^-4), verbose = 0) where T
+function initialize_s!(s, ρ₀, xs :: AbstractArray{T}; optimiser = Adam(10^-3), ε = T(10^-4), verbose = 0, record_s_values = false, record_losses = false) where T
     verbose > 1 && println("Initializing NN \n$s")
     ys = score(ρ₀, xs)
     ys_sum_squares = norm(ys)^2
@@ -74,7 +74,7 @@ function sbtm_solve(xs, ts :: AbstractVector{T}, b, D, s; epochs = 25, record_s_
             loss_value, grads = withgradient(s -> loss(s, xs), s)
             Flux.update!(state, s, grads[1])
             record_losses && (losses[epoch, k] = loss_value)
-            verbose > 1 && println("Epoch $epoch, loss = $loss_value.")
+            verbose > 2 && println("Epoch $epoch, loss = $loss_value.")
         end
         record_s_values && (s_values[:, :, :, k] = s(xs))
     end

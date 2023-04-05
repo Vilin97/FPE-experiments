@@ -6,8 +6,6 @@ include("sbtm.jl")
 include("landau/sbtm.jl")
 include("blob.jl")
 
-# TODO change saving to only save trajectories and kwargs, not the full ODESolution.
-
 # first example from paper
 function moving_trap_experiment_combined(N, num_samples, num_timestamps; folder = "data")
     moving_trap_experiment(N, num_samples, num_timestamps, sbtm, "sbtm"; folder = folder)
@@ -110,15 +108,18 @@ function do_experiment(ds, experiment, experiment_name; methods = [sbtm, blob], 
 end
 
 function landau_experiment()
-    # ns = [50, 100, 200, 400, 500, 1000, 2000, 3000, 4000, 5000, 6000]
-    ns = [8000, 10_000]
+    # ns = [50, 100, 200, 400, 500, 1000, 2000, 3000, 4000, 5000, 6000, 8_000, 10_000, 20_000]
+    ns = [50]
     reset_timer!()
     for n in ns
         println("n = $n")
         seed!(1234)
         xs, ts, ρ = landau(n)
-        @timeit "n = $n" solution = sbtm_landau(xs, ts; ρ₀ = x->ρ(x,0.))
-        JLD2.save("landau_experiment/sbtm_n_$(n).jld2", "solution", solution)
+        @timeit "n = $n" solution, s_values, losses = sbtm_landau(xs, ts; ρ₀ = x->ρ(x,0.), record_s_values = true, record_losses = true)
+        JLD2.save("landau_experiment/sbtm_n_$(n).jld2", 
+        "solution", solution,
+        "s_values", s_values,
+        "losses", losses)
     end
     print_timer()
 end

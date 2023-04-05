@@ -39,6 +39,7 @@ z = rand(3)
 @btime norm($z)^2 # 16.733 ns
 @btime ($z)' * $z # 17.134 ns
 @btime sum(x -> x^2, $z) # 4.400 ns
+@btime sum(abs2, $z) # 4.400 ns
 @btime normsq($z) # 3.600 ns
 @btime normsq_lv($z) # 7.800 ns
 
@@ -46,6 +47,7 @@ z = rand(100)
 @btime norm($z)^2 # 43.794 ns
 @btime ($z)' * $z # 30.050 ns
 @btime sum(x -> x^2, $z) # 14.314 ns
+@btime sum(abs2, $z) # 14.314 ns
 @btime normsq($z) # 10.200 ns
 @btime normsq_lv($z) # 11.111 ns
 
@@ -82,6 +84,7 @@ v = rand(100)
 @btime fastdot_lv($z, $v) # 14.414 ns 
 
 # benchmarking landau_f!
+include("src/utils.jl")
 using Flux, LinearAlgebra, TimerOutputs, BenchmarkTools, LoopVectorization
 const I3 = I(3)
 num_particles(xs :: AbstractArray{T, 2}) where T = size(xs, 2)
@@ -146,6 +149,20 @@ function landau_f_test3!(dxs, xs, pars, t)
     nothing
 end
 
+function landau_f_test4!(dxs, xs, pars, t)
+    A!, A_mat, s, s_values, z, v = pars
+    n = num_particles(xs)
+    dxs .= zero(eltype(xs))
+    @timeit "l1" s_values .= s(xs)
+    @timeit "propagate particles" @views for p in 1:n, q in 1:n
+        z .= xs[:,p] .- xs[:,q]
+        v .= s_values[:,q] .- s_values[:,p]
+        dxs[:,p] .+=  v .* normsq(z) .- fastdot(z,v) .* z
+    end
+    dxs ./= 24*n
+    nothing
+end
+
 s = Chain(Dense(3, 100, relu), Dense(100, 3))
 xs = randn(Float32, 3, 1000)
 A!(a, z) = a .= eltype(z)(1/24) .* (normsq(z) .* I3 .- z.*z')
@@ -157,14 +174,15 @@ p = (A!, A_mat, s, s_values, temp1, temp2)
 dxs = zeros(eltype(xs),size(xs))
 
 reset_timer!()
-landau_f_test2!(dxs, xs, p, 0.)
+landau_f_test3!(dxs, xs, p, 0.)
 print_timer()
 
 reset_timer!()
-landau_f_test3!(dxs, xs, p, 0.)
+landau_f_test4!(dxs, xs, p, 0.)
 print_timer()
 @btime landau_f_test2!($dxs, $xs, $p, 0.)
 @btime landau_f_test3!($dxs, $xs, $p, 0.)
+@btime landau_f_test4!($dxs, $xs, $p, 0.)
 
 # benchmarking landau_f!
 n = 1000
@@ -186,3 +204,22 @@ function measure(dxs, xs, p, t)
 end
 measure(dxs, xs, p, 0.)
 @btime landau_f_test!($dxs, $xs, $p, 0.) # only s(xs) allocates
+
+# benchmarking initialize_s
+using BenchmarkTools, TimerOutputs, LinearAlgebra, Flux
+using Random: seed!
+using Distributions: MvNormal, logpdf
+include("src/utils.jl")
+include("src/sbtm.jl")
+
+# TODO this still does not work. Need to either go to a later starting time or add more layers or change relu to smth else
+start_time = 6.
+reset_timer!()
+for n in [50, 100, 200, 300]
+    @show n
+    seed!(1234)
+    @timeit "sample" xs, ts, ρ = landau(n, start_time)
+    ρ₀ = x -> ρ(x, 0.0)
+    @timeit "top init" s_new = initialize_s(ρ₀, xs, 100, 1, verbose = 2)
+end
+print_timer()
