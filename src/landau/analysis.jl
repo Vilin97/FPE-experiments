@@ -6,7 +6,7 @@ include("../plotting_utils.jl")
 
 a(K) = (5K-3)/(2K)
 b(K) = (1-K)/(2K^2)
-K(t) = 1 - exp(-(t+5.5)/6)
+K(t) = 1 - exp(-(t+6.)/6)
 # true_pdf(x, K) = (a(K) + b(K)*sum(abs2, x)) * pdf(MvNormal(K*I(3)), x)
 true_pdf(x, K) = (a(K) + b(K)*sum(abs2, x)) * (2π*K)^(-3/2) * exp(-sum(abs2, x)/(2K))
 true_marginal(x :: Number, K) = (a(K) + b(K)*x^2 + (1-K)/K) * pdf(MvNormal(K*I(1)), [x])
@@ -87,3 +87,4 @@ end
 losses_plot1 = losses_experiment(8000);
 losses_plot2 = losses_experiment(20_000);
 losses_plot = plot(losses_plot1, losses_plot2, layout = (2, 1), size = (1400, 1200))
+savefig(losses_plot, "plots/landau 3d losses sbtm")

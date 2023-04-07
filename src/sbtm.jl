@@ -7,7 +7,7 @@ using Flux.Optimise: Adam
 using Flux: params
 
 
-function initialize_s(ρ₀, xs, size_hidden, num_hidden; activation = relu, verbose = 0, kwargs...)
+function initialize_s(ρ₀, xs, size_hidden, num_hidden; activation = softsign, verbose = 0, kwargs...)
     d_bar = size(xs,1)
     s = Chain(
         Dense(d_bar => size_hidden, activation),
@@ -15,25 +15,30 @@ function initialize_s(ρ₀, xs, size_hidden, num_hidden; activation = relu, ver
         Dense(size_hidden => d_bar)
         )
     @timeit "NN init" epochs = initialize_s!(s, ρ₀, xs; verbose = verbose, kwargs...)
-    verbose > 0 && println("Initialized the NN in $epochs epochs. Loss = $(loss(s, xs)).")
     return s
 end
 
-function initialize_s!(s, ρ₀, xs :: AbstractArray{T}; optimiser = Adam(10^-3), ε = T(10^-4), verbose = 0, record_s_values = false, record_losses = false) where T
-    verbose > 1 && println("Initializing NN \n$s")
+function initialize_s!(s, ρ₀, xs :: AbstractArray{T}; optimiser = Adam(10^-3), ε = T(10^-4), verbose = 0, max_epochs = 10^5, kwargs...) where T
+    verbose > 0 && println("Initializing NN for $(num_particles(xs)) particles \n$s")
     ys = score(ρ₀, xs)
     ys_sum_squares = norm(ys)^2
-    square_error(s) = norm(s(xs) - ys)^2 / ys_sum_squares
-    epoch = 0
+    square_error(s) = sum(abs2, s(xs) - ys) / ys_sum_squares
+    num_epochs = 0
     θ = params(s)
-    loss_value = ε + one(T)
-    while loss_value > ε
+    final_loss = square_error(s)
+    for epoch in 1:max_epochs
         loss_value, grads = withgradient(() -> square_error(s), θ)
         Flux.update!(optimiser, θ, grads)
-        epoch += 1
+        
+        num_epochs = epoch
+        final_loss = loss_value
         verbose > 1 && epoch % 1000 == 0 && println("Epoch $epoch, loss $loss_value")
+        if loss_value < ε
+            break
+        end
     end
-    epoch
+    verbose > 0 && println("Initialized NN in $num_epochs epochs. Loss = $final_loss.")
+    num_epochs
 end
 
 function loss(s, xs :: AbstractArray{T}, α = T(0.1)) where T
