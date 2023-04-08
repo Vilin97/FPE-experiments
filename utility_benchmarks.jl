@@ -181,7 +181,6 @@ reset_timer!()
 landau_f_test4!(dxs, xs, p, 0.)
 print_timer()
 @btime landau_f_test2!($dxs, $xs, $p, 0.)
-@btime landau_f_test3!($dxs, $xs, $p, 0.)
 @btime landau_f_test4!($dxs, $xs, $p, 0.)
 
 # benchmarking landau_f!
@@ -212,19 +211,8 @@ using Distributions: MvNormal, logpdf
 include("src/utils.jl")
 include("src/sbtm.jl")
 
-# TODO this still does not work. Need to either go to a later starting time or add more layers or change relu to smth else
-start_time = 6.
-reset_timer!()
-for n in [50, 100, 200, 300]
-    @show n
-    seed!(1234)
-    @timeit "sample" xs, ts, ρ = landau(n, start_time)
-    ρ₀ = x -> ρ(x, 0.0)
-    @timeit "top init" s = initialize_s(ρ₀, xs, 100, 1, verbose = 2, max_epochs = 10^4)
-end
-print_timer()
-
 # plotting the approximation
+start_time = 6.
 n = 300
 max_epochs = 2*10^4
 activation = swish
@@ -238,7 +226,7 @@ plot!(plt, -4:0.01:4, x -> score(ρ₀,[x,0.,0.])[1], label="true");
 plot!(plt, -4:0.01:4, x -> s([x,0.,0.])[1], label="s");
 scatter!(plt, xs[1,:], score(ρ₀, vcat(xs[1,:]', zeros(2,n)))[1,:], label="samples", markersize=3)
 
-
+# comparing the error
 function square_error(s, xs)
     ys =  score(ρ₀, xs)
     sum(abs2, s(xs) - ys) / sum(abs2, ys)
@@ -249,7 +237,6 @@ n = 100
 seed!(1234)
 xs, ts, ρ = landau(n, start_time)
 square_error(s, xs)
-
 
 # choosing the activation function. softsign is best
 n = 400

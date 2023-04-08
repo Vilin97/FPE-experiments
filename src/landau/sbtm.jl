@@ -49,12 +49,12 @@ function sbtm_landau_solve(xs, ts :: AbstractVector{T}, s; epochs = 25, verbose 
     z = similar(xs[:,1])
     v = similar(xs[:,1])
     p = (s, s_values_temp, z, v)
-    ode_problem = ODEProblem(landau_f!, initial, tspan, p)
+    ode_problem = ODEProblem(landau_f_sbtm!, initial, tspan, p)
     solution = solve(ode_problem, alg = Euler(), saveat=ts, tstops = ts, callback = cb)
     solution :: ODESolution, s_values, losses
 end
 
-function landau_f!(dxs, xs, pars, t)
+function landau_f_sbtm!(dxs, xs, pars, t)
     s, s_values, z, v = pars
     n = num_particles(xs)
     dxs .= zero(eltype(xs))
@@ -67,3 +67,4 @@ function landau_f!(dxs, xs, pars, t)
     dxs ./= 24*n
     nothing
 end
+landau_f! = landau_f_sbtm! # avoid JLD2 warnings

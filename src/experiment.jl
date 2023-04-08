@@ -5,6 +5,7 @@ include("utils.jl")
 include("sbtm.jl")
 include("landau/sbtm.jl")
 include("blob.jl")
+include("landau/blob.jl")
 
 # first example from paper
 function moving_trap_experiment_combined(N, num_samples, num_timestamps; folder = "data")
@@ -107,7 +108,7 @@ function do_experiment(ds, experiment, experiment_name; methods = [sbtm, blob], 
     print_timer()
 end
 
-function landau_experiment()
+function landau_sbtm_experiment()
     ns = [50, 100, 200, 400, 500, 1000, 2000, 3000, 4000, 5000, 6000, 8_000, 10_000, 20_000]
     # ns = [50]
     reset_timer!()
@@ -124,6 +125,22 @@ function landau_experiment()
     print_timer()
 end
 
-landau_experiment()
+function landau_blob_experiment()
+    ns = [50, 100, 200, 400, 500, 1000, 2000, 3000, 4000, 5000, 6000, 8_000, 10_000, 20_000]
+    # ns = [50, 100, 200, 400, 500, 1000]
+    reset_timer!()
+    for n in ns
+        println("n = $n")
+        ε = epsilon_landau(n)
+        seed!(1234)
+        xs, ts, ρ = landau(n, 6.)
+        @timeit "n = $n" solution, s_values, losses = blob_landau(xs, ts; ε = ε)
+        JLD2.save("landau_experiment/blob_n_$(n).jld2", 
+        "solution", solution)
+    end
+    print_timer()
+end
+
+landau_blob_experiment()
 
 # JLD2.load("landau_experiment/sbtm_n_4000.jld2", "solution")
