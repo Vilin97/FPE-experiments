@@ -14,31 +14,60 @@ function initialize_s(ρ₀, xs, size_hidden, num_hidden; activation = softsign,
         repeat([Dense(size_hidden, size_hidden), activation], num_hidden-1)...,
         Dense(size_hidden => d_bar)
         )
-    @timeit "NN init" epochs = initialize_s!(s, ρ₀, xs; verbose = verbose, kwargs...)
-    return s
+    @timeit "NN init" epochs, losses = initialize_s!(s, ρ₀, xs; verbose = verbose, kwargs...)
+    return s, losses
 end
 
-function initialize_s!(s, ρ₀, xs :: AbstractArray{T}; optimiser = Adam(10^-3), ε = T(10^-4), verbose = 0, max_epochs = 10^5, kwargs...) where T
+function initialize_s!(s, ρ₀, xs :: AbstractArray{T}; optimiser = Adam(10^-3), loss_tolerance = T(10^-4), verbose = 0, max_epochs = 2*10^4, record_losses = false, kwargs...) where T
     verbose > 0 && println("Initializing NN for $(num_particles(xs)) particles \n$s")
     ys = score(ρ₀, xs)
     ys_sum_squares = norm(ys)^2
-    square_error(s) = sum(abs2, s(xs) - ys) / ys_sum_squares
+    square_error(s) = sum(abs2, s(xs) .- ys) / ys_sum_squares
     num_epochs = 0
     θ = params(s)
     final_loss = square_error(s)
+    losses = ones(max_epochs)
     for epoch in 1:max_epochs
         loss_value, grads = withgradient(() -> square_error(s), θ)
-        Flux.update!(optimiser, θ, grads)
         
         num_epochs = epoch
         final_loss = loss_value
+        record_losses && (losses[epoch] = loss_value)
         verbose > 1 && epoch % 1000 == 0 && println("Epoch $epoch, loss $loss_value")
-        if loss_value < ε
+        if loss_value < loss_tolerance
+            break
+        end
+        Flux.update!(optimiser, θ, grads)
+    end
+    verbose > 0 && println("Initialized NN in $num_epochs epochs. Loss = $final_loss.")
+    num_epochs, losses
+end
+
+using MLUtils: DataLoader
+l2_error_normalized(s, xs, ys) = sum(abs2, s(xs) .- ys) / sum(abs2, ys)
+function initialize_s_new!(s, ρ₀, xs :: AbstractArray{T}; optimiser = Adam(10^-3), loss_tolerance = T(10^-4), verbose = 0, max_epochs = 2*10^4, record_losses = false, batchsize=2^8, kwargs...) where T
+    verbose > 0 && println("Initializing NN for $(num_particles(xs)) particles \n$s")
+    ys = score(ρ₀, xs)
+    data_loader = DataLoader((data=xs, label=ys), batchsize=batchsize);
+    state = Flux.setup(optimiser, s)
+    num_epochs = 0
+    current_loss = l2_error_normalized(s, xs, ys)
+    losses = ones(max_epochs)
+    for epoch in 1:max_epochs
+        for (x, y) in data_loader
+            loss_value, grads = withgradient(s -> l2_error_normalized(s, x, y), s)
+            Flux.update!(state, s, grads[1])
+            current_loss = loss_value
+        end
+        num_epochs = epoch
+        record_losses && (losses[epoch] = current_loss)
+        verbose > 1 && epoch % 1000 == 0 && println("Epoch $epoch, loss $current_loss")
+        if current_loss < loss_tolerance
             break
         end
     end
-    verbose > 0 && println("Initialized NN in $num_epochs epochs. Loss = $final_loss.")
-    num_epochs
+    verbose > 0 && println("Initialized NN in $num_epochs epochs. Loss = $current_loss.")
+    num_epochs, losses
 end
 
 function loss(s, xs :: AbstractArray{T}, α = T(0.1)) where T
@@ -72,6 +101,7 @@ function sbtm_solve(xs, ts :: AbstractVector{T}, b, D, s; epochs = 25, record_s_
     k = 1
     # train s_ in a callback
     function affect!(integrator)
+        DifferentialEquations.u_modified!(integrator, false)
         k += 1
         xs = integrator.u
         state = Flux.setup(optimiser, s)

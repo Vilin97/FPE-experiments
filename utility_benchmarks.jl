@@ -213,13 +213,21 @@ include("src/sbtm.jl")
 
 # plotting the approximation
 start_time = 6.
-n = 300
+n = 2000
 max_epochs = 2*10^4
-activation = swish
+activation = softsign
 seed!(1234)
 xs, ts, ρ = landau(n, start_time)
 ρ₀ = x -> ρ(x, 0.0)
-s = initialize_s(ρ₀, xs, 100, 1, verbose = 2, max_epochs = max_epochs, activation = activation)
+s = Chain(Dense(3, 100, activation), Dense(100, 100, activation), Dense(100, 3))
+reset_timer!()
+initialize_s!(s, ρ₀, xs, verbose = 2, max_epochs = max_epochs, activation = activation)
+print_timer()
+square_error(s, xs)
+xs_low_n, ts, ρ = landau(n ÷ 10, start_time)
+xs_high_n, ts, ρ = landau(10*n, start_time)
+square_error(s, xs_low_n)
+square_error(s, xs_high_n)
 
 plt = plot(ylims=(-9,9), title = "n = $n, max_epochs = $max_epochs, activation = $activation");
 plot!(plt, -4:0.01:4, x -> score(ρ₀,[x,0.,0.])[1], label="true");
@@ -260,3 +268,108 @@ end
 println("\n\n\n\n\n\n")
 print_timer()
 plot(plots..., layout = (3,3), size = (2200,1800))
+
+# choosing hyperparameters
+n = 2000
+max_epochs = 4*10^4
+seed!(1234)
+xs, ts, ρ = landau(n, start_time)
+ρ₀ = x -> ρ(x, 0.0)
+loss_plots = []
+@show n
+nns = [
+Chain(
+    Dense(3, 100, softsign), 
+    Dense(100, 3)),
+Chain(
+    Dense(3, 100, softsign), 
+    Dense(100, 100, softsign), 
+    Dense(100, 3)), 
+Chain(
+    Dense(3, 100, softsign), 
+    Dense(100, 100, softsign), 
+    Dense(100, 100, softsign), 
+    Dense(100, 3))]
+losses_array = []
+reset_timer!()
+for (i,s) in enumerate(nns)
+    @show s
+    @timeit "NN $i" _, losses = initialize_s!(s, ρ₀, xs, verbose = 2, max_epochs = max_epochs, record_losses = true)
+    push!(losses_array, losses)
+end
+print_timer()
+plt = plot(size = (1200,900), title = "n = $n, max_epochs = $max_epochs", xscale = :log10, yscale = :log10, xlabel = "epoch", ylabel = "loss");
+for i in 1:length(nns)
+    plot!(plt, 1:max_epochs, losses_array[i], label = "nn $i")
+end
+plt
+
+
+# looks like 3 hidden layers is best. 1 layer is not rich enough. Also testing mini-batches.
+n = 10_000
+max_epochs = 10^4
+seed!(1234)
+xs, ts, ρ = landau(n, start_time)
+ρ₀ = x -> ρ(x, 0.0)
+loss_plots = []
+@show n
+nns = [
+Chain(
+    Dense(3, 100, softsign), 
+    Dense(100, 3)),
+Chain(
+    Dense(3, 100, softsign), 
+    Dense(100, 100, softsign), 
+    Dense(100, 3)), 
+Chain(
+    Dense(3, 100, softsign), 
+    Dense(100, 100, softsign), 
+    Dense(100, 100, softsign), 
+    Dense(100, 3))]
+losses_array = []
+reset_timer!()
+for (i,s) in enumerate(nns)
+    @show s
+    @timeit "NN $i" _, losses = initialize_s_new!(s, ρ₀, xs, verbose = 2, max_epochs = max_epochs, record_losses = true)
+    nns[i] = s
+    push!(losses_array, losses)
+end
+print_timer()
+plt = plot(size = (1200,900), title = "n = $n, max_epochs = $max_epochs", xscale = :log10, yscale = :log10, xlabel = "epoch", ylabel = "loss");
+for i in 1:length(nns)
+    plot!(plt, 1:max_epochs, losses_array[i], label = "nn $i")
+end
+plt
+
+
+xs_test = landau(30_000, start_time)[1]
+plt = plot(xlims = (-4,4), ylims=(-9,9), title = "n = $n, max_epochs = $max_epochs");
+scatter!(plt, xs[1,:], score(ρ₀, vcat(xs[1,:]', zeros(2,n)))[1,:], label="samples", markersize=1)
+plot!(plt, -4:0.01:4, x -> score(ρ₀,[x,0.,0.])[1], label="true");
+for (i, s) in enumerate(nns)
+    # plot!(plt, -4:0.01:4, x -> s([x,0.,0.])[1], label="nn $i");
+    @show square_error(s, xs_test)
+    @show square_error(s, xs)
+end
+plt
+
+
+
+# testing how callback works
+using DifferentialEquations, TimerOutputs, BenchmarkTools
+ts = 0.0:0.1:1.0
+affect!(integrator) = (DifferentialEquations.u_modified!(integrator, false)); nothing
+cb = PresetTimeCallback(ts.+0.05, affect!, save_positions=(false,false))
+f!(du,u,p,t) = @timeit "f!" (du .= u)
+prob = ODEProblem(f!, [1.0], (0.0,1.0))
+
+
+reset_timer!()
+solution1 = solve(prob, alg = Euler(), saveat=ts, tstops = ts)
+print_timer() # f! ncalls = 11
+reset_timer!()
+solution2 = solve(prob, alg = Euler(), saveat=ts, tstops = ts, callback = cb)
+print_timer() # f! ncalls = 21
+
+@btime solve($prob, alg = $(Euler()), tstops = $ts) #  5.750 μs (79 allocations: 5.75 KiB)
+@btime solve($prob, alg = $(Euler()), tstops = $ts, callback = $cb) # 7.875 μs (83 allocations: 6.22 KiB)

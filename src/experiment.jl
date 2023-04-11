@@ -108,6 +108,7 @@ function do_experiment(ds, experiment, experiment_name; methods = [sbtm, blob], 
     print_timer()
 end
 
+# TODO: train the NN to approximate the initial score once, on many particles. Save it. Then use it for all the other experiments.
 function landau_sbtm_experiment()
     ns = [50, 100, 200, 400, 500, 1000, 2000, 3000, 4000, 5000, 6000, 8_000, 10_000, 20_000]
     # ns = [50]
@@ -116,7 +117,7 @@ function landau_sbtm_experiment()
         println("n = $n")
         seed!(1234)
         xs, ts, ρ = landau(n, 6.)
-        @timeit "n = $n" solution, s_values, losses = sbtm_landau(xs, ts; ρ₀ = x->ρ(x,0.), record_s_values = true, record_losses = true, verbose = 1)
+        @timeit "n = $n" solution, s_values, losses = sbtm_landau(xs, ts; ρ₀ = x->ρ(x,0.), record_s_values = true, record_losses = true, verbose = 1, loss_tolerance = 1e-3)
         JLD2.save("landau_experiment/sbtm_n_$(n).jld2", 
         "solution", solution,
         "s_values", s_values,

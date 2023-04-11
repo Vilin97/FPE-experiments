@@ -22,7 +22,8 @@ function sbtm_landau(xs, ts; ρ₀ = nothing, s = nothing, size_hidden=100, num_
     solution, s_values, losses = sbtm_landau_solve(Float32.(xs), Float32.(ts), s_new; kwargs...)
 end
 
-function sbtm_landau_solve(xs, ts :: AbstractVector{T}, s; epochs = 25, verbose = 0, optimiser = Adam(10^-4), record_s_values = false, record_losses = false, kwargs...) where T
+function sbtm_landau_solve(xs, ts :: AbstractVector{T}, s; epochs = 25, verbose = 0, optimiser = Adam(10^-4), record_s_values = false, record_losses = false, saveat=ts[[end ÷ 2, end]], kwargs...) where T
+    verbose > 1 && println("Saving at time $saveat")
     tspan = (zero(T), ts[end])
     initial = xs
     s_values = zeros(T, size(xs)..., length(ts))
@@ -31,6 +32,7 @@ function sbtm_landau_solve(xs, ts :: AbstractVector{T}, s; epochs = 25, verbose 
     k = 1
     # train s_ in a callback
     function affect!(integrator)
+        DifferentialEquations.u_modified!(integrator, false)
         xs = integrator.u
         state = Flux.setup(optimiser, s)
         @timeit "update NN" for epoch in 1:epochs
@@ -50,7 +52,7 @@ function sbtm_landau_solve(xs, ts :: AbstractVector{T}, s; epochs = 25, verbose 
     v = similar(xs[:,1])
     p = (s, s_values_temp, z, v)
     ode_problem = ODEProblem(landau_f_sbtm!, initial, tspan, p)
-    solution = solve(ode_problem, alg = Euler(), saveat=ts, tstops = ts, callback = cb)
+    solution = solve(ode_problem, alg = Euler(), saveat=saveat, tstops = ts, callback = cb)
     solution :: ODESolution, s_values, losses
 end
 
