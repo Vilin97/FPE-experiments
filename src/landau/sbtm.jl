@@ -16,13 +16,13 @@ D   : Rᵈ × R → Rᵈˣᵈ or R
 n   : number of particles
 s   : NN to approximate score ∇log ρ
 """
-function sbtm_landau(xs, ts; ρ₀ = nothing, s = nothing, size_hidden=100, num_hidden=1, kwargs...)
+function sbtm_landau(xs, ts; ρ₀ = nothing, s = nothing, size_hidden=100, num_hidden=2, kwargs...)
     isnothing(s) && isnothing(ρ₀) && error("Must provide either s or ρ₀.")
     isnothing(s) ? (s_new = initialize_s(ρ₀, xs, size_hidden, num_hidden; kwargs...)) : (s_new = deepcopy(s))
     solution, s_values, losses = sbtm_landau_solve(Float32.(xs), Float32.(ts), s_new; kwargs...)
 end
 
-function sbtm_landau_solve(xs, ts :: AbstractVector{T}, s; epochs = 25, verbose = 0, optimiser = Adam(10^-4), record_s_values = false, record_losses = false, saveat=ts[[end ÷ 2, end]], kwargs...) where T
+function sbtm_landau_solve(xs, ts :: AbstractVector{T}, s; epochs = 25, verbose = 0, optimiser = Adam(10^-4), record_s_values = false, record_losses = false, saveat=ts[[(end+1) ÷ 2, end]], kwargs...) where T
     verbose > 1 && println("Saving at time $saveat")
     tspan = (zero(T), ts[end])
     initial = xs
@@ -41,7 +41,7 @@ function sbtm_landau_solve(xs, ts :: AbstractVector{T}, s; epochs = 25, verbose 
             record_losses && (losses[epoch, k] = loss_value)
             verbose > 2 && println("Epoch $epoch, loss = $loss_value.")
         end
-        verbose > 1 && println("loss = $(loss(s, xs)).")
+        verbose > 2 && println("loss = $(loss(s, xs)).")
         record_s_values && (s_values[:, :, k] .= s(xs))
         k += 1
     end

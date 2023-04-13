@@ -212,27 +212,61 @@ include("src/utils.jl")
 include("src/sbtm.jl")
 
 # plotting the approximation
-start_time = 6.
-n = 2000
-max_epochs = 2*10^4
-activation = softsign
+start_time = 5.5
+n = 10_000
 seed!(1234)
 xs, ts, ρ = landau(n, start_time)
 ρ₀ = x -> ρ(x, 0.0)
-s = Chain(Dense(3, 100, activation), Dense(100, 100, activation), Dense(100, 3))
 reset_timer!()
-initialize_s!(s, ρ₀, xs, verbose = 2, max_epochs = max_epochs, activation = activation)
+@timeit "2-layer" s2 = initialize_s(ρ₀, xs, 100, 2; verbose = 2)
+@timeit "3-layer" s3 = initialize_s(ρ₀, xs, 100, 3; verbose = 2)
 print_timer()
-square_error(s, xs)
-xs_low_n, ts, ρ = landau(n ÷ 10, start_time)
+# train error:
+l2_error_normalized(s2, xs, score(ρ₀, xs))
+l2_error_normalized(s3, xs, score(ρ₀, xs))
+# test error: 
+xs_new, ts, ρ = landau(n, start_time)
 xs_high_n, ts, ρ = landau(10*n, start_time)
-square_error(s, xs_low_n)
-square_error(s, xs_high_n)
+l2_error_normalized(s2, xs_new, ρ₀)
+l2_error_normalized(s2, xs_high_n, ρ₀)
+l2_error_normalized(s3, xs_new, ρ₀)
+l2_error_normalized(s3, xs_high_n, ρ₀)
 
-plt = plot(ylims=(-9,9), title = "n = $n, max_epochs = $max_epochs, activation = $activation");
+plt = plot(title = "score at t = $start_time, n = $n");
 plot!(plt, -4:0.01:4, x -> score(ρ₀,[x,0.,0.])[1], label="true");
-plot!(plt, -4:0.01:4, x -> s([x,0.,0.])[1], label="s");
-scatter!(plt, xs[1,:], score(ρ₀, vcat(xs[1,:]', zeros(2,n)))[1,:], label="samples", markersize=3)
+plot!(plt, -4:0.01:4, x -> s2([x,0.,0.])[1], label="s2");
+plot!(plt, -4:0.01:4, x -> s3([x,0.,0.])[1], label="s3");
+scatter!(plt, xs[1,:], score(ρ₀, vcat(xs[1,:]', zeros(2,n)))[1,:], label="samples", markersize=2);
+plt
+
+
+start_time = 5.5
+n = 10_000
+max_iterations = 2*10^4
+seed!(1234)
+xs, ts, ρ = landau(n, start_time)
+ρ₀ = x -> ρ(x, 0.0)
+reset_timer!()
+@timeit "2-layer" s2 = initialize_s(ρ₀, xs, 100, 2; verbose = 2, max_iterations = max_iterations)
+@timeit "3-layer" s3 = initialize_s(ρ₀, xs, 100, 3; verbose = 2, max_iterations = max_iterations)
+print_timer()
+# train error:
+l2_error_normalized(s2, xs, score(ρ₀, xs))
+l2_error_normalized(s3, xs, score(ρ₀, xs))
+# test error: 
+xs_new, ts, ρ = landau(n, start_time)
+xs_high_n, ts, ρ = landau(10*n, start_time)
+l2_error_normalized(s2, xs_new, ρ₀)
+l2_error_normalized(s2, xs_high_n, ρ₀)
+l2_error_normalized(s3, xs_new, ρ₀)
+l2_error_normalized(s3, xs_high_n, ρ₀)
+
+plt = plot(title = "score at t = $start_time, n = $n");
+plot!(plt, -4:0.01:4, x -> score(ρ₀,[x,0.,0.])[1], label="true");
+plot!(plt, -4:0.01:4, x -> s2([x,0.,0.])[1], label="s2");
+plot!(plt, -4:0.01:4, x -> s3([x,0.,0.])[1], label="s3");
+scatter!(plt, xs[1,:], score(ρ₀, vcat(xs[1,:]', zeros(2,n)))[1,:], label="samples", markersize=2);
+plt
 
 # comparing the error
 function square_error(s, xs)
@@ -305,53 +339,52 @@ end
 plt
 
 
-# looks like 3 hidden layers is best. 1 layer is not rich enough. Also testing mini-batches.
-n = 10_000
-max_epochs = 10^4
+# Choosing architecture. Looks like 3 hidden layers is best. 1 layer is not rich enough. Also testing mini-batches.
+using Plots
+using BenchmarkTools, TimerOutputs, LinearAlgebra, Flux
+using Random: seed!
+using Distributions: MvNormal, logpdf
+include("src/utils.jl")
+include("src/sbtm.jl")
+function square_error(s, xs)
+    ys =  score(ρ₀, xs)
+    sum(abs2, s(xs) .- ys) / sum(abs2, ys)
+end
+n = 20_000
+start_time = 6.
+max_iterations = 2*10^4
 seed!(1234)
 xs, ts, ρ = landau(n, start_time)
 ρ₀ = x -> ρ(x, 0.0)
 loss_plots = []
 @show n
-nns = [
-Chain(
-    Dense(3, 100, softsign), 
-    Dense(100, 3)),
-Chain(
-    Dense(3, 100, softsign), 
-    Dense(100, 100, softsign), 
-    Dense(100, 3)), 
-Chain(
-    Dense(3, 100, softsign), 
-    Dense(100, 100, softsign), 
-    Dense(100, 100, softsign), 
-    Dense(100, 3))]
 losses_array = []
+xs_test = landau(50_000, start_time)[1]
+test_error_plt = plot(xlims = (-4,4), ylims=(-9,9), title = "n = $n, max_iterations = $max_iterations");
+plot!(test_error_plt, -4:0.01:4, x -> score(ρ₀,[x,0.,0.])[1], label="true");
 reset_timer!()
-for (i,s) in enumerate(nns)
-    @show s
-    @timeit "NN $i" _, losses = initialize_s_new!(s, ρ₀, xs, verbose = 2, max_epochs = max_epochs, record_losses = true)
-    nns[i] = s
+for (i,batchsize) in enumerate(2 .^ (6:10))
+    @show batchsize
+    seed!(1234)
+    s = Chain(
+    Dense(3, 100, softsign), 
+    Dense(100, 100, softsign), 
+    Dense(100, 100, softsign), 
+    Dense(100, 3))
+    @timeit "batchsize $batchsize" _, losses = initialize_s_new!(s, ρ₀, xs, verbose = 2, max_iterations = max_iterations, record_losses = true, batchsize = batchsize)
     push!(losses_array, losses)
-end
-print_timer()
-plt = plot(size = (1200,900), title = "n = $n, max_epochs = $max_epochs", xscale = :log10, yscale = :log10, xlabel = "epoch", ylabel = "loss");
-for i in 1:length(nns)
-    plot!(plt, 1:max_epochs, losses_array[i], label = "nn $i")
-end
-plt
 
-
-xs_test = landau(30_000, start_time)[1]
-plt = plot(xlims = (-4,4), ylims=(-9,9), title = "n = $n, max_epochs = $max_epochs");
-scatter!(plt, xs[1,:], score(ρ₀, vcat(xs[1,:]', zeros(2,n)))[1,:], label="samples", markersize=1)
-plot!(plt, -4:0.01:4, x -> score(ρ₀,[x,0.,0.])[1], label="true");
-for (i, s) in enumerate(nns)
-    # plot!(plt, -4:0.01:4, x -> s([x,0.,0.])[1], label="nn $i");
+    plot!(test_error_plt, -2:0.01:2, x -> s([x,0.,0.])[1], label="batchsize $batchsize");
     @show square_error(s, xs_test)
     @show square_error(s, xs)
 end
+print_timer()
+plt = plot(size = (1200,900), title = "n = $n, max_iterations = $max_iterations", xscale = :log10, yscale = :log10, xlabel = "iteration", ylabel = "loss");
+for i in 1:length(losses_array)
+    plot!(plt, 1:max_iterations, losses_array[i], label = "batchsize $(2 .^ (i+5))")
+end
 plt
+plot(test_error_plt, size = (2000, 1500))
 
 
 
@@ -359,7 +392,7 @@ plt
 using DifferentialEquations, TimerOutputs, BenchmarkTools
 ts = 0.0:0.1:1.0
 affect!(integrator) = (DifferentialEquations.u_modified!(integrator, false)); nothing
-cb = PresetTimeCallback(ts.+0.05, affect!, save_positions=(false,false))
+cb = PresetTimeCallback(ts, affect!, save_positions=(false,false))
 f!(du,u,p,t) = @timeit "f!" (du .= u)
 prob = ODEProblem(f!, [1.0], (0.0,1.0))
 
@@ -370,6 +403,10 @@ print_timer() # f! ncalls = 11
 reset_timer!()
 solution2 = solve(prob, alg = Euler(), saveat=ts, tstops = ts, callback = cb)
 print_timer() # f! ncalls = 21
+reset_timer!()
+solution2 = solve(prob, alg = Euler(), saveat=ts, dt = 0.1, callback = cb)
+print_timer()
 
 @btime solve($prob, alg = $(Euler()), tstops = $ts) #  5.750 μs (79 allocations: 5.75 KiB)
 @btime solve($prob, alg = $(Euler()), tstops = $ts, callback = $cb) # 7.875 μs (83 allocations: 6.22 KiB)
+@btime solve($prob, alg = $(Euler()), dt = 0.1, callback = $cb) 

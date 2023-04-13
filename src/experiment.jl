@@ -109,39 +109,50 @@ function do_experiment(ds, experiment, experiment_name; methods = [sbtm, blob], 
 end
 
 # TODO: train the NN to approximate the initial score once, on many particles. Save it. Then use it for all the other experiments.
-function landau_sbtm_experiment()
-    ns = [50, 100, 200, 400, 500, 1000, 2000, 3000, 4000, 5000, 6000, 8_000, 10_000, 20_000]
+function landau_sbtm_experiment(num_runs = 10)
+    ns = [50, 100, 200, 400, 500, 1000, 2000, 4000, 10_000, 20_000]
     # ns = [50]
     reset_timer!()
     for n in ns
+        xs, ts, ρ = landau(n, 6.)
+        average_solution = [zeros(size(xs)) for t in [0.25, 0.5]]
         println("n = $n")
         seed!(1234)
-        xs, ts, ρ = landau(n, 6.)
-        @timeit "n = $n" solution, s_values, losses = sbtm_landau(xs, ts; ρ₀ = x->ρ(x,0.), record_s_values = true, record_losses = true, verbose = 1, loss_tolerance = 1e-3)
-        JLD2.save("landau_experiment/sbtm_n_$(n).jld2", 
-        "solution", solution,
-        "s_values", s_values,
-        "losses", losses)
+        for run in 1:num_runs
+            xs, ts, ρ = landau(n, 6.)
+            @timeit "n = $n" solution, _, _ = sbtm_landau(xs, ts; ρ₀ = x->ρ(x,0.), record_s_values = false, record_losses = false, verbose = 2, loss_tolerance = 1e-3)
+            average_solution += solution.u
+        end
+        average_solution /= num_runs
+        JLD2.save("landau_experiment/sbtm_n_$(n)_avg_$num_runs.jld2", 
+        "average_solution", average_solution)
     end
     print_timer()
 end
+landau_sbtm_experiment()
 
-function landau_blob_experiment()
-    ns = [50, 100, 200, 400, 500, 1000, 2000, 3000, 4000, 5000, 6000, 8_000, 10_000, 20_000]
-    # ns = [50, 100, 200, 400, 500, 1000]
+function landau_blob_experiment(num_runs = 10)
+    # ns = [50, 100, 200, 400, 500, 1000, 2000, 4000, 10_000, 20_000]
+    ns = [20_000]
     reset_timer!()
     for n in ns
+        xs, ts, ρ = landau(n, 6.)
+        average_solution = [zeros(size(xs)) for t in [0.25, 0.5]]
         println("n = $n")
         ε = epsilon_landau(n)
         seed!(1234)
-        xs, ts, ρ = landau(n, 6.)
-        @timeit "n = $n" solution, s_values, losses = blob_landau(xs, ts; ε = ε)
-        JLD2.save("landau_experiment/blob_n_$(n).jld2", 
-        "solution", solution)
+        for run in 1:num_runs
+            xs, ts, ρ = landau(n, 6.)
+            @timeit "n = $n" solution = blob_landau(xs, ts; ε = ε)
+            average_solution += solution.u
+        end
+        average_solution /= num_runs
+        JLD2.save("landau_experiment/blob_n_$(n)_avg_$num_runs.jld2", 
+        "average_solution", average_solution)
     end
     print_timer()
 end
 
 landau_blob_experiment()
 
-# JLD2.load("landau_experiment/sbtm_n_4000.jld2", "solution")
+avg=JLD2.load("landau_experiment/blob_n_50_avg_10.jld2", "average_solution")

@@ -42,7 +42,7 @@ function blob_landau(xs, ts; ε = 1/π, kwargs...)
     solution = blob_landau_solve(T.(xs), T.(ts), ε)
 end
 
-function blob_landau_solve(xs, ts :: AbstractVector{T}, ε :: T) where T
+function blob_landau_solve(xs, ts :: AbstractVector{T}, ε :: T; saveat=ts[[(end+1) ÷ 2, end]], kwargs...) where T
     tspan = (ts[1], ts[end])
     d, n = size(xs)
     initial = xs
@@ -53,11 +53,11 @@ function blob_landau_solve(xs, ts :: AbstractVector{T}, ε :: T) where T
     mols = zeros(T, n, n)
     score_params = (ε, diff_norm2s, mol_sum, term1, term2, mols)
 
-    score_values_temp = similar(s(xs))
+    score_values_temp = similar(xs)
     z = similar(xs[:,1])
     v = similar(xs[:,1])
     pars = (score_values_temp, z, v, score_params)
     
     ode_problem = ODEProblem(landau_f_blob!, initial, tspan, pars)
-    solution = solve(ode_problem, saveat = ts, alg = Euler(), tstops = ts)
+    solution = solve(ode_problem, saveat = saveat, alg = Euler(), tstops = ts)
 end

@@ -37,13 +37,13 @@ function diffusion_test()
     blob(xs, ts, b, D; ε = ε)
     @timeit "blob" solution = blob(xs, ts, b, D; ε = ε)
     @test !isnothing(solution)
-    error = Lp_error(solution, ρ, ε, ts[end], d, n; p=p, k = k)
+    error = Lp_error(solution, ρ, ε, ts[end], d; p=p, k = k)
     println("L$p error for blob is $error")
     @timeit "blob error test" @test error < tol
 
     @timeit "sbtm" solution = sbtm(xs, ts, b, D; ρ₀ = ρ(0.), verbose = 0)
     @test !isnothing(solution)
-    error = Lp_error(solution, ρ, ε, ts[end], d, n; p=p, k = k)
+    error = Lp_error(solution, ρ, ε, ts[end], d; p=p, k = k)
     println("L$p error for sbtm is $error")
     @timeit "sbtm error test" @test error < tol
 end

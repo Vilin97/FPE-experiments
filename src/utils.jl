@@ -40,19 +40,24 @@ reconstruct_pdf(ε, x, u :: AbstractMatrix) = Mol(ε, x, u)/size(u, 2)
 reconstruct_pdf(ε, x, u :: AbstractArray{T, 3}) where T = reconstruct_pdf(ε, x, reshape(u, :, size(u, 3)))
 marginal(dist :: MvNormal, k=1) = MvNormal(mean(dist)[1:k], cov(dist)[1:k, 1:k])
 
-"Lp error between the reconstructed pdf and the true pdf at time t. If k < d, the marginals of the first k coordinates are compared."
-function Lp_error(solution, ε, t, d, n; p = 1, verbose = 0, xlim = 10, k = 1, marginal_pdf)
-    u = @view reshape(solution(t), d, n)[1:k, :]
+"Lp error between the reconstructed pdf and the true pdf at time t. Only the marginals of the first k coordinates are compared."
+function Lp_error(u_ :: AbstractArray, ε, d; p = 1, verbose = 0, xlim = 10, k = 1, marginal_pdf, kwargs...)
+    n = num_particles(u_)
+    u = @view reshape(u_, d, n)[1:k, :]
     empirical_pdf(x) = reconstruct_pdf(ε, x, u)
     diff(x) = (empirical_pdf(x) - marginal_pdf(x))^p 
-    error, accuracy = hcubature(diff, fill(-xlim, k), fill(xlim, k), maxevals = 10^5, atol = 0.001)
+    error, accuracy = hcubature(diff, fill(-xlim, k), fill(xlim, k), maxevals = 10^5, atol = 0.0001)
     verbose > 0 && (println("L$p error integration accuracy = $accuracy"))
     max(eps(), error)^(1/p)
 end
 
-function Lp_error(solution, true_solution, ε, t, d, n; p = 1, verbose = 0, xlim = 10, k = 1)
+function Lp_error(solution :: ODESolution, ε, t_index, d; kwargs...)
+    Lp_error(solution[t_index], ε, d; kwargs...)
+end
+
+function Lp_error(solution :: ODESolution, true_solution, ε, t, d; k = 1, kwargs...)
     true_marginal = marginal(true_solution(t), k)
-    Lp_error(solution, ε, t, d, n; p = p, verbose = verbose, xlim = xlim, k = k, marginal_pdf = x -> pdf(true_marginal, x))
+    Lp_error(solution(t), ε, d; marginal_pdf = x -> pdf(true_marginal, x), kwargs...)
 end
 
 function moving_trap(N, num_samples, num_timestamps)
