@@ -1,4 +1,4 @@
-using DifferentialEquations, LoopVectorization
+using DifferentialEquations, LoopVectorization, TimerOutputs
 
 function blob_score!(score_array, xs, pars)
     (ε, diff_norm2s, mol_sum, term1, term2, mols) = pars
@@ -37,12 +37,13 @@ function landau_f_blob!(dxs, xs, pars, t)
     nothing
 end
 
-function blob_landau(xs, ts; ε = 1/π, kwargs...)
+function blob_landau(xs, ts; ε=0.025, kwargs...)
     T = typeof(ε)
-    solution = blob_landau_solve(T.(xs), T.(ts), ε)
+    solution = blob_landau_solve(T.(xs), T.(ts), ε; kwargs...)
 end
 
-function blob_landau_solve(xs, ts :: AbstractVector{T}, ε :: T; saveat=ts[[(end+1) ÷ 2, end]], kwargs...) where T
+function blob_landau_solve(xs, ts :: AbstractVector{T}, ε :: T; saveat, verbose = 0, kwargs...) where T
+    verbose > 0 && println("Blob method. n = $(num_particles(xs)), ε = $ε.")
     tspan = (ts[1], ts[end])
     d, n = size(xs)
     initial = xs

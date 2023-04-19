@@ -3,6 +3,7 @@ using Test, Distributions, Random, TimerOutputs
 include("../src/utils.jl")
 include("../src/blob.jl")
 include("../src/sbtm.jl")
+include("landau.jl")
 
 function no_diffusion_test()
     Random.seed!(1234)

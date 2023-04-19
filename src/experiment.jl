@@ -109,50 +109,71 @@ function do_experiment(ds, experiment, experiment_name; methods = [sbtm, blob], 
 end
 
 # TODO: train the NN to approximate the initial score once, on many particles. Save it. Then use it for all the other experiments.
-function landau_sbtm_experiment(num_runs = 10)
-    ns = [50, 100, 200, 400, 500, 1000, 2000, 4000, 10_000, 20_000]
+function landau_sbtm_experiment(;num_runs = 5, verbose = 1)
+    ns = [50, 100, 200, 400, 500, 1000, 2000, 4000, 10_000]
     # ns = [50]
+    start_time = 5.5
+    pre_trained_s = load("models/landau_model_n_4000.jld2", "s")
+    K(t) = 1 - exp(-(t+start_time)/6)
     reset_timer!()
     for n in ns
-        xs, ts, ρ = landau(n, 6.)
-        average_solution = [zeros(size(xs)) for t in [0.25, 0.5]]
+        xs, ts, ρ = landau(n, start_time)
+        saveat = ts[[1, (length(ts)+1)÷2, end]]
+        ρ₀(x) = ρ(x,K(0))
+        combined_solution = [zeros(size(xs, 1), size(xs, 2)*num_runs) for _ in saveat]
         println("n = $n")
-        seed!(1234)
-        for run in 1:num_runs
-            xs, ts, ρ = landau(n, 6.)
-            @timeit "n = $n" solution, _, _ = sbtm_landau(xs, ts; ρ₀ = x->ρ(x,0.), record_s_values = false, record_losses = false, verbose = 2, loss_tolerance = 1e-3)
-            average_solution += solution.u
+        @timeit "n = $n" for run in 1:num_runs
+            seed!(run)
+            xs, ts, ρ = landau(n, start_time)
+            s = deepcopy(pre_trained_s)
+            @timeit "initialize NN" initialize_s!(s, ρ₀, xs, loss_tolerance = 1e-3, verbose = verbose, max_iter = 10^4)
+            solution = sbtm_landau(xs, ts; s = s, verbose = verbose, loss_tolerance = 1e-3, saveat = saveat)
+            for i in 1:length(saveat)
+                combined_solution[i][:, (run-1)*size(xs, 2)+1:run*size(xs, 2)] .= solution.u[i]
+            end
         end
-        average_solution /= num_runs
-        JLD2.save("landau_experiment/sbtm_n_$(n)_avg_$num_runs.jld2", 
-        "average_solution", average_solution)
+        JLD2.save("landau_experiment/sbtm_n_$(n)_runs_$(num_runs).jld2", 
+        "solution", combined_solution,
+        "saveat", saveat,
+        "n", n,
+        "num_runs", num_runs,
+        "start_time", start_time,
+        "timer", TimerOutputs.get_defaulttimer())
     end
     print_timer()
 end
-landau_sbtm_experiment()
+landau_sbtm_experiment(num_runs=5)
 
-function landau_blob_experiment(num_runs = 10)
-    # ns = [50, 100, 200, 400, 500, 1000, 2000, 4000, 10_000, 20_000]
-    ns = [20_000]
+function landau_blob_experiment(;num_runs = 5, verbose = 1)
+    ns = [50, 100, 200, 400, 500, 1000, 2000, 4000, 10_000]
+    # ns = [50]
+    start_time = 5.5
     reset_timer!()
     for n in ns
-        xs, ts, ρ = landau(n, 6.)
-        average_solution = [zeros(size(xs)) for t in [0.25, 0.5]]
+        ε = 0.05
+        xs, ts, ρ = landau(n, start_time)
+        saveat = ts[[1, (length(ts)+1)÷2, end]]
+        combined_solution = [zeros(size(xs, 1), size(xs, 2)*num_runs) for _ in saveat]
         println("n = $n")
-        ε = epsilon_landau(n)
-        seed!(1234)
         for run in 1:num_runs
-            xs, ts, ρ = landau(n, 6.)
-            @timeit "n = $n" solution = blob_landau(xs, ts; ε = ε)
-            average_solution += solution.u
+            seed!(run)
+            xs, ts, ρ = landau(n, start_time)
+            @timeit "n = $n" solution = blob_landau(xs, ts; ε = ε, saveat = saveat, verbose = verbose)
+            for i in 1:length(saveat)
+                combined_solution[i][:, (run-1)*size(xs, 2)+1:run*size(xs, 2)] .= solution.u[i]
+            end
         end
-        average_solution /= num_runs
-        JLD2.save("landau_experiment/blob_n_$(n)_avg_$num_runs.jld2", 
-        "average_solution", average_solution)
+        JLD2.save("landau_experiment/blob_n_$(n)_runs_$(num_runs).jld2", 
+        "solution", combined_solution,
+        "saveat", saveat,
+        "n", n,
+        "num_runs", num_runs,
+        "start_time", start_time,
+        "timer", TimerOutputs.get_defaulttimer())
     end
     print_timer()
 end
+landau_blob_experiment(num_runs=5)
 
-landau_blob_experiment()
-
-avg=JLD2.load("landau_experiment/blob_n_50_avg_10.jld2", "average_solution")
+sol1=load("landau_experiment/sbtm_n_10000_runs_5.jld2", "solution")
+sol2=load("landau_experiment/blob_n_10000_runs_5.jld2", "solution")

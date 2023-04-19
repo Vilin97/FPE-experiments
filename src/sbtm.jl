@@ -38,7 +38,7 @@ function initialize_s!(s, ρ₀, xs :: AbstractArray{T}; optimiser = Adam(10^-3)
                 break
             end
             # record_losses && (losses[iteration] = current_loss)
-            verbose > 1 && iteration % 1000 == 0 && println("Iteration $iteration, batch loss $current_loss")
+            verbose > 2 && iteration % 1000 == 0 && println("Iteration $iteration, batch loss $current_loss")
             iteration += 1
             Flux.update!(state, s, grads[1])
         end

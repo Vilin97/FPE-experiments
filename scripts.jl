@@ -410,3 +410,53 @@ print_timer()
 @btime solve($prob, alg = $(Euler()), tstops = $ts) #  5.750 μs (79 allocations: 5.75 KiB)
 @btime solve($prob, alg = $(Euler()), tstops = $ts, callback = $cb) # 7.875 μs (83 allocations: 6.22 KiB)
 @btime solve($prob, alg = $(Euler()), dt = 0.1, callback = $cb) 
+
+
+# Solving Landau with blob
+n = 4_000
+time_interval = 0.5
+seed!(1234)
+num_runs = 5
+xs, ts, _ = landau(n, t_start; time_interval = time_interval)
+
+solutions = []
+εs = [0.005, 0.01, 0.025]
+# εs = [0.025]
+for ε in εs
+    seed!(1234)
+    avg_solution = blob_landau(xs, ts; ε = ε, saveat = ts[[1, end]], verbose = 1).u
+    for run in 1:num_runs-1
+        xs, ts, _ = landau(n, t_start; time_interval = time_interval)
+        solution = blob_landau(xs, ts; ε = ε, saveat = ts[[1, end]], verbose = 1)
+        avg_solution = hcat.(avg_solution, solution.u)
+    end
+    push!(solutions, avg_solution)
+end
+plotly()
+x_range = -4:0.01:4
+reconstruction_ε = 0.1
+plt = plot(title = "slice comparison, n = $n, reconstruction_ε = $reconstruction_ε, num_runs = $num_runs", ylabel = "density", xlabel = "x", size = (1000, 600));
+# plot!(plt, x_range, x -> f([x,0,0], K(0)), label="analytic, t=$start_time");
+plot!(plt, x_range, x -> f([x,0,0], K(time_interval)), label="analytic, t=$(start_time+time_interval)");
+# plot!(plt, x_range, x -> reconstruct_pdf(reconstruction_ε, [x,0,0], xs), label="sampled, t = $start_time")
+for (solution, ε) in zip(solutions, εs)
+    l2_error = Lp_error(solution[end], reconstruction_ε, marginal_pdf = x -> f(x, K(time_interval)), k=3, verbose = 2)
+    plot!(plt, x_range, x -> reconstruct_pdf(reconstruction_ε, [x,0,0], solution[end]), label="solved, t = $(start_time+time_interval), ε = $(round(ε, digits=4)), l2 error = $l2_error")
+end
+plt
+
+Lp_error(solutions[2][1], 0.1, marginal_pdf = x -> f(x, K(0.5)), k=3, verbose = 2)
+Lp_error(solutions[2][end], 0.1, marginal_pdf = x -> f(x, K(0.5)), k=3, verbose = 2)
+
+# training and saving a model
+using JLD2
+start_time = 5.5
+n = 4_000
+xs, ts, ρ = landau(n, start_time)
+ρ₀ = x -> ρ(x, K(0))
+s = initialize_s(ρ₀, xs, 100, 2; verbose = 2)
+xs_big, ts, ρ = landau(20*n, start_time)
+l2_loss = l2_error_normalized(s, xs_big, ρ₀)
+save("models/landau_model_n_$(n).jld2", "s", s, "l2_loss", l2_loss)
+s_loaded = load("models/landau_model_n_$n.jld2", "s")
+s_loaded(xs_big) == s(xs_big)

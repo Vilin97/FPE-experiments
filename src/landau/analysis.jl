@@ -6,70 +6,78 @@ include("sbtm.jl")
 include("../utils.jl")
 include("../plotting_utils.jl")
 
+const START = 5.5
+const SAVEAT = [0., 0.25, 0.5]
+
 a(K) = (5K-3)/(2K)
 b(K) = (1-K)/(2K^2)
-K(t) = 1 - exp(-(t+6.)/6)
+K(t) = 1 - exp(-(t+START)/6)
 # true_pdf(x, K) = (a(K) + b(K)*sum(abs2, x)) * pdf(MvNormal(K*I(3)), x)
 true_pdf(x, K) = (a(K) + b(K)*sum(abs2, x)) * (2π*K)^(-3/2) * exp(-sum(abs2, x)/(2K))
 true_marginal(x :: Number, K) = (a(K) + b(K)*x^2 + (1-K)/K) * pdf(MvNormal(K*I(1)), [x])
 true_marginal(x :: AbstractVector, K) = (a(K) + b(K)*x[1]^2 + (1-K)/K) * pdf(MvNormal(K*I(1)), x)
+true_slice(x, K) = true_pdf([x,0,0], K)
 
-"plot the marginal pdfs at time t"
-function pdf_plot(solutions, labels, ε, d = 3)
-    time_index = 2
-    n = num_particles(solutions[1][1])
-    plt = plot(title = "t = $(round(6.5, digits = 2)), n = $n", xlabel = "x", ylabel = "pdf(x)", ylim = (0, 0.5))
+"plot the slice pdfs at time t"
+function pdf_plot(solutions, labels, ε, time_index; num_runs=1)
+    t = SAVEAT[time_index]
+    n = num_particles(solutions[1][1]) ÷ num_runs
+    plt = plot(title = "t = $(round(START+t, digits = 2)), n = $n", xlabel = "x", ylabel = "pdf(x)", ylim = (0, 0.05))
     pdf_range = range(-6, 6, length=100)
     label_ = "true"
-    plot!(plt, pdf_range, [true_marginal(x, K(0.5)) for x in pdf_range], label = label_)
+    plot!(plt, pdf_range, x->true_slice(x, K(t)), label = label_)
     for (solution, label) in zip(solutions, labels)
-        u = solution[time_index][1, :]
-        plot!(plt, pdf_range, [reconstruct_pdf(ε, x, u) for x in pdf_range], label = label)
+        u = solution[time_index]
+        plot!(plt, pdf_range, x -> reconstruct_pdf(ε, [x,0,0], u), label = "$label, ε = $(round(ε, digits = 4))")
     end
     plt
 end
 
-"Change n, plot marginal pdfs at end time."
-function marginal_pdf_experiment()
-    ε = 0.053
-    ns = [200, 500, 1000, 2000, 4000, 10_000]
+"Change n, plot slice pdfs at end time."
+function slice_pdf_experiment()
+    num_runs = 5
+    time_index = 3
+    ns = [200, 400, 1000, 2000, 4000, 10_000]
+    # ns = [200, 500]
     plots = []
     for n in ns
-        # t_plot = 0.5
-        time_index = 2
-        solution_sbtm = JLD2.load("landau_experiment/sbtm_n_$(n)_avg_10.jld2", "average_solution")
-        solution_blob = JLD2.load("landau_experiment/blob_n_$(n)_avg_10.jld2", "average_solution")
-        pdf_plt = pdf_plot([solution_sbtm, solution_blob], ["sbtm", "blob"], time_index, ε)
+        ε = 1 / n^(1/3)
+        solution_sbtm = JLD2.load("landau_experiment/sbtm_n_$(n)_runs_$num_runs.jld2", "solution")
+        solution_blob = JLD2.load("landau_experiment/blob_n_$(n)_runs_$num_runs.jld2", "solution")
+        pdf_plt = pdf_plot([solution_sbtm, solution_blob], ["sbtm", "blob"], ε, time_index, num_runs=num_runs)
         push!(plots, pdf_plt)
     end
-    plot(plots..., layout = (2, 3), size = (1600, 900))
+    plot(plots..., layout = (2,3), size = (1600, 900))
 end
 
-marginal_plot = marginal_pdf_experiment()
-savefig(marginal_plot, "plots/landau 3d marginal pdfs combined")
+plt = slice_pdf_experiment()
+savefig(plt, "plots/landau 3d slice pdfs combined")
 
 "Change n, plot Lp error of k-particles marginal at end time vs n."
-function Lp_error_experiment(d=3; p=2, k=3, verbose = 0)
-    ε = 0.053
+function Lp_error_experiment(d=3; p=2, k=3, verbose = 0, kwargs...)
     ns = [50, 100, 200, 400, 500, 1000, 2000, 4000, 10_000]
-    t_range = collect(range(0.25, 0.5, length = 2))
+    t_range = SAVEAT
+    num_runs = 5
     plots = []
     for (i,t) in enumerate(t_range)
         sbtm_errors = Float64[]
         blob_errors = Float64[]
-        for n in ns
-            solution_sbtm = JLD2.load("landau_experiment/sbtm_n_$(n)_avg_10.jld2", "average_solution")
-            solution_blob = JLD2.load("landau_experiment/blob_n_$(n)_avg_10.jld2", "average_solution")
-            push!(sbtm_errors, Lp_error(solution_sbtm, ε, i, t_range, d, n; verbose = verbose, p = p, k=k, marginal_pdf = x -> true_pdf(x, K(t))))
-            push!(blob_errors, Lp_error(solution_blob, ε, i, t_range, d, n; verbose = verbose, p = p, k=k, marginal_pdf = x -> true_pdf(x, K(t))))
+        @views for n in ns
+            ε = 1 / n^(1/3)
+            solution_sbtm = JLD2.load("landau_experiment/sbtm_n_$(n)_runs_$num_runs.jld2", "solution")
+            solution_blob = JLD2.load("landau_experiment/blob_n_$(n)_runs_$num_runs.jld2", "solution")
+            lp_error_sbtm = Lp_error_slice(solution_sbtm[i], x->true_pdf(x, K(t)); reconstruct_ε = ε, p=p, k=k, verbose = verbose, kwargs...)
+            lp_error_blob = Lp_error_slice(solution_blob[i], x->true_pdf(x, K(t)); reconstruct_ε = ε, p=p, k=k, verbose = verbose, kwargs...)
+            push!(sbtm_errors, lp_error_sbtm)
+            push!(blob_errors, lp_error_blob)
         end
         Lp_errors_plot = Lp_error_plot(ns, [sbtm_errors, blob_errors], ["sbtm", "blob"], [:red, :green], t, d, "landau", k, p)
         push!(plots, Lp_errors_plot)
     end
-    Lp_plots = plot(plots..., layout = (1, length(plots)), size = (1400, 600))
+    Lp_plots = plot(plots..., layout = (length(plots), 1), size = (1000, 1000))
 end
 
-L2_errror_plot = Lp_error_experiment(verbose = 1)
+L2_errror_plot = Lp_error_experiment(;k=3, verbose = 1, max_evals=3*10^3, xlim = 5)
 savefig(L2_errror_plot, "plots/landau 3d L2 error combined")
 
 function losses_experiment(n)
