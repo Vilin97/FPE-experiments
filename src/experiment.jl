@@ -122,18 +122,21 @@ function landau_sbtm_experiment(;num_runs = 5, verbose = 1)
         ρ₀(x) = ρ(x,K(0))
         combined_solution = [zeros(size(xs, 1), size(xs, 2)*num_runs) for _ in saveat]
         println("n = $n")
+        combined_s_values = zeros(eltype(xs), size(xs)..., length(ts), num_runs)
         @timeit "n = $n" for run in 1:num_runs
             seed!(run)
             xs, ts, ρ = landau(n, start_time)
             s = deepcopy(pre_trained_s)
-            @timeit "initialize NN" initialize_s!(s, ρ₀, xs, loss_tolerance = 1e-3, verbose = verbose, max_iter = 10^4)
-            solution = sbtm_landau(xs, ts; s = s, verbose = verbose, loss_tolerance = 1e-3, saveat = saveat)
+            @timeit "initialize NN" initialize_s!(s, ρ₀, xs, loss_tolerance = 1e-4, verbose = verbose, max_iter = 10^4)
+            solution, s_values, losses = sbtm_landau(xs, ts; s = s, verbose = verbose, loss_tolerance = 1e-4, saveat = saveat, record_s_values = true)
             for i in 1:length(saveat)
                 combined_solution[i][:, (run-1)*size(xs, 2)+1:run*size(xs, 2)] .= solution.u[i]
             end
+            combined_s_values[:, :, :, run] .= s_values
         end
         JLD2.save("landau_experiment/sbtm_n_$(n)_runs_$(num_runs)_start_$(start_time).jld2", 
         "solution", combined_solution,
+        "s_values", combined_s_values,
         "saveat", saveat,
         "n", n,
         "num_runs", num_runs,

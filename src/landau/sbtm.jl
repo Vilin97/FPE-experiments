@@ -20,7 +20,6 @@ function sbtm_landau(xs, ts; ρ₀ = nothing, s = nothing, size_hidden=100, num_
     isnothing(s) && isnothing(ρ₀) && error("Must provide either s or ρ₀.")
     isnothing(s) ? (s_new = initialize_s(ρ₀, xs, size_hidden, num_hidden; error_tolerance = error_tolerance, kwargs...)) : (s_new = deepcopy(s))
     solution, s_values, losses = sbtm_landau_solve(Float32.(xs), Float32.(ts), s_new; kwargs...)
-    solution
 end
 
 function sbtm_landau_solve(xs, ts :: AbstractVector{T}, s; epochs = 25, verbose = 0, optimiser = Adam(10^-4), record_s_values = false, record_losses = false, saveat=ts[[(end+1) ÷ 2, end]], kwargs...) where T
