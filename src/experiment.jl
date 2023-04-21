@@ -110,10 +110,10 @@ end
 
 # TODO: train the NN to approximate the initial score once, on many particles. Save it. Then use it for all the other experiments.
 function landau_sbtm_experiment(;num_runs = 5, verbose = 1)
-    ns = [50, 100, 200, 400, 500, 1000, 2000, 4000, 10_000]
+    ns = [50, 100, 200, 400, 500, 1000, 2000, 4000, 10_000, 20_000]
     # ns = [50]
-    start_time = 5.5
-    pre_trained_s = load("models/landau_model_n_4000.jld2", "s")
+    start_time = 6
+    pre_trained_s = load("models/landau_model_n_4000_start_6.jld2", "s")
     K(t) = 1 - exp(-(t+start_time)/6)
     reset_timer!()
     for n in ns
@@ -132,7 +132,7 @@ function landau_sbtm_experiment(;num_runs = 5, verbose = 1)
                 combined_solution[i][:, (run-1)*size(xs, 2)+1:run*size(xs, 2)] .= solution.u[i]
             end
         end
-        JLD2.save("landau_experiment/sbtm_n_$(n)_runs_$(num_runs).jld2", 
+        JLD2.save("landau_experiment/sbtm_n_$(n)_runs_$(num_runs)_start_$(start_time).jld2", 
         "solution", combined_solution,
         "saveat", saveat,
         "n", n,
@@ -145,9 +145,9 @@ end
 landau_sbtm_experiment(num_runs=5)
 
 function landau_blob_experiment(;num_runs = 5, verbose = 1)
-    ns = [50, 100, 200, 400, 500, 1000, 2000, 4000, 10_000]
+    ns = [50, 100, 200, 400, 500, 1000, 2000, 4000, 10_000, 20_000]
     # ns = [50]
-    start_time = 5.5
+    start_time = 6
     reset_timer!()
     for n in ns
         ε = 0.05
@@ -163,7 +163,7 @@ function landau_blob_experiment(;num_runs = 5, verbose = 1)
                 combined_solution[i][:, (run-1)*size(xs, 2)+1:run*size(xs, 2)] .= solution.u[i]
             end
         end
-        JLD2.save("landau_experiment/blob_n_$(n)_runs_$(num_runs).jld2", 
+        JLD2.save("landau_experiment/blob_n_$(n)_runs_$(num_runs)_start_$(start_time).jld2", 
         "solution", combined_solution,
         "saveat", saveat,
         "n", n,
@@ -175,5 +175,5 @@ function landau_blob_experiment(;num_runs = 5, verbose = 1)
 end
 landau_blob_experiment(num_runs=5)
 
-sol1=load("landau_experiment/sbtm_n_10000_runs_5.jld2", "solution")
-sol2=load("landau_experiment/blob_n_10000_runs_5.jld2", "solution")
+# sol1=load("landau_experiment/sbtm_n_10000_runs_5.jld2", "solution")
+# sol2=load("landau_experiment/blob_n_10000_runs_5.jld2", "solution")

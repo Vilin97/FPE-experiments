@@ -28,7 +28,7 @@ function sbtm_landau_solve(xs, ts :: AbstractVector{T}, s; epochs = 25, verbose 
     tspan = (zero(T), ts[end])
     initial = xs
     s_values = zeros(T, size(xs)..., length(ts))
-    # record_s_values && (s_values[:, :, 1] .= s(xs))
+    record_s_values && (s_values[:, :, 1] .= s(xs))
     losses = zeros(T, epochs, length(ts))
     k = 1
     # train s_ in a callback
@@ -49,25 +49,38 @@ function sbtm_landau_solve(xs, ts :: AbstractVector{T}, s; epochs = 25, verbose 
     cb = PresetTimeCallback(ts, affect!, save_positions=(false,false))
     
     s_values_temp = similar(s(xs))
-    z = similar(xs[:,1])
-    v = similar(xs[:,1])
-    p = (s, s_values_temp, z, v)
+    p = (s, s_values_temp)
     ode_problem = ODEProblem(landau_f_sbtm!, initial, tspan, p)
     solution = solve(ode_problem, alg = Euler(), saveat=saveat, tstops = ts, callback = cb)
     solution :: ODESolution, s_values, losses
 end
 
 function landau_f_sbtm!(dxs, xs, pars, t)
-    s, s_values, z, v = pars
+    s, s_values = pars
     n = num_particles(xs)
     dxs .= zero(eltype(xs))
     s_values .= s(xs)
-    @timeit "propagate particles" @views for p in 1:n, q in 1:n
-        z .= xs[:,p] .- xs[:,q]
-        v .= s_values[:,q] .- s_values[:,p]
-        dxs[:,p] .+=  v .* normsq(z) .- fastdot(z,v) .* z
+    @timeit "propagate particles" @turbo for p = 1:n
+        Base.Cartesian.@nexprs 3 i -> dx_i = zero(eltype(dxs))
+        for q = 1:n
+            dotzv = zero(eltype(dxs))
+            normsqz = zero(eltype(dxs))
+            Base.Cartesian.@nexprs 3 i -> begin
+                z_i = xs[i, p] - xs[i, q]
+                v_i = s_values[i, q] - s_values[i, p]
+                dotzv += z_i * v_i
+                normsqz += z_i * z_i
+            end
+            Base.Cartesian.@nexprs 3 i -> begin
+                dx_i += v_i * normsqz - dotzv * z_i
+            end
+        end
+        Base.Cartesian.@nexprs 3 i -> begin
+            dxs[i, p] += dx_i
+        end
     end
     dxs ./= 24*n
     nothing
 end
+
 landau_f! = landau_f_sbtm! # avoid JLD2 warnings

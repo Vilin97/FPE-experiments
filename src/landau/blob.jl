@@ -1,5 +1,57 @@
 using DifferentialEquations, LoopVectorization, TimerOutputs
 
+function blob_landau(xs, ts; ε=0.025, kwargs...)
+    T = typeof(ε)
+    solution = blob_landau_solve(T.(xs), T.(ts), ε; kwargs...)
+end
+
+function blob_landau_solve(xs, ts :: AbstractVector{T}, ε :: T; saveat, verbose = 0, kwargs...) where T
+    verbose > 0 && println("Blob method. n = $(num_particles(xs)), ε = $ε.")
+    tspan = (ts[1], ts[end])
+    d, n = size(xs)
+    initial = xs
+    diff_norm2s = zeros(T, n, n)
+    mol_sum = zeros(T, n)
+    term1 = zeros(T, d, n)
+    term2 = zeros(T, d, n)
+    mols = zeros(T, n, n)
+    score_params = (ε, diff_norm2s, mol_sum, term1, term2, mols)
+
+    score_values_temp = similar(xs)
+    pars = (score_values_temp, score_params)
+    
+    ode_problem = ODEProblem(landau_f_blob!, initial, tspan, pars)
+    solution = solve(ode_problem, saveat = saveat, alg = Euler(), tstops = ts)
+end
+
+function landau_f_blob!(dxs, xs, pars, t)
+    score_values, score_params = pars
+    n = num_particles(xs)
+    dxs .= zero(eltype(xs))
+    @timeit "compute score" blob_score!(score_values, xs, score_params)
+    @timeit "propagate particles" @turbo for p = 1:n
+        Base.Cartesian.@nexprs 3 i -> dx_i = zero(eltype(dxs))
+        for q = 1:n
+            dotzv = zero(eltype(dxs))
+            normsqz = zero(eltype(dxs))
+            Base.Cartesian.@nexprs 3 i -> begin
+                z_i = xs[i, p] - xs[i, q]
+                v_i = score_values[i, q] - score_values[i, p]
+                dotzv += z_i * v_i
+                normsqz += z_i * z_i
+            end
+            Base.Cartesian.@nexprs 3 i -> begin
+                dx_i += v_i * normsqz - dotzv * z_i
+            end
+        end
+        Base.Cartesian.@nexprs 3 i -> begin
+            dxs[i, p] += dx_i
+        end
+    end
+    dxs ./= 24*n
+    nothing
+end
+
 function blob_score!(score_array, xs, pars)
     (ε, diff_norm2s, mol_sum, term1, term2, mols) = pars
     d, n = size(xs)
@@ -21,44 +73,4 @@ function blob_score!(score_array, xs, pars)
         term2[k, p] += fac * diff_k / mol_sum[q]
     end
     score_array .= term1 .+ term2
-end
-
-function landau_f_blob!(dxs, xs, pars, t)
-    score_values, z, v, score_params = pars
-    n = num_particles(xs)
-    dxs .= zero(eltype(xs))
-    @timeit "compute score" blob_score!(score_values, xs, score_params)
-    @timeit "propagate particles" @views for p in 1:n, q in 1:n
-        z .= xs[:,p] .- xs[:,q]
-        v .= score_values[:,q] .- score_values[:,p]
-        dxs[:,p] .+=  v .* normsq(z) .- fastdot(z,v) .* z
-    end
-    dxs ./= 24*n
-    nothing
-end
-
-function blob_landau(xs, ts; ε=0.025, kwargs...)
-    T = typeof(ε)
-    solution = blob_landau_solve(T.(xs), T.(ts), ε; kwargs...)
-end
-
-function blob_landau_solve(xs, ts :: AbstractVector{T}, ε :: T; saveat, verbose = 0, kwargs...) where T
-    verbose > 0 && println("Blob method. n = $(num_particles(xs)), ε = $ε.")
-    tspan = (ts[1], ts[end])
-    d, n = size(xs)
-    initial = xs
-    diff_norm2s = zeros(T, n, n)
-    mol_sum = zeros(T, n)
-    term1 = zeros(T, d, n)
-    term2 = zeros(T, d, n)
-    mols = zeros(T, n, n)
-    score_params = (ε, diff_norm2s, mol_sum, term1, term2, mols)
-
-    score_values_temp = similar(xs)
-    z = similar(xs[:,1])
-    v = similar(xs[:,1])
-    pars = (score_values_temp, z, v, score_params)
-    
-    ode_problem = ODEProblem(landau_f_blob!, initial, tspan, pars)
-    solution = solve(ode_problem, saveat = saveat, alg = Euler(), tstops = ts)
 end
