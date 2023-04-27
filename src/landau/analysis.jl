@@ -7,7 +7,13 @@ include("../utils.jl")
 include("../plotting_utils.jl")
 
 const START = 6
-const SAVEAT = [0., 0.25, 0.5]
+const SAVEAT = [0., 0.75, 1.5]
+const NUMRUNS = 10
+const ns = [500, 1_000, 2_000, 4_000, 10_000, 15_000]
+path(n, num_runs, start) = "landau_experiment/sbtm_n_$(n)_runs_$(num_runs)_start_$(start).jld2"
+@assert load(path(ns[1], NUMRUNS, START), "num_runs") == NUMRUNS
+@assert load(path(ns[1], NUMRUNS, START), "saveat") == SAVEAT
+@assert load(path(ns[1], NUMRUNS, START), "start_time") == START
 
 a(K) = (5K-3)/(2K)
 b(K) = (1-K)/(2K^2)
@@ -41,15 +47,14 @@ end
 
 "Change n, plot slice pdfs at end time."
 function slice_pdf_experiment(;time_index = 3)
-    num_runs = 5
     # ns = [200, 400, 1000, 2000, 4000, 10_000]
-    ns = [20_000]
+    ns = [15_000]
     plots = []
     for n in ns
-        ε = rec_epsilon(n)
-        solution_sbtm = JLD2.load("landau_experiment/sbtm_n_$(n)_runs_$(num_runs)_start_$(START).jld2", "solution")
-        solution_blob = JLD2.load("landau_experiment/blob_n_$(n)_runs_$(num_runs)_start_$(START).jld2", "solution")
-        pdf_plt = pdf_plot([solution_sbtm, solution_blob], ["sbtm", "blob"], ε, time_index, num_runs=num_runs)
+        ε = rec_epsilon(n*NUMRUNS)
+        solution_sbtm = JLD2.load("landau_experiment/sbtm_n_$(n)_runs_$(NUMRUNS)_start_$(START).jld2", "solution")
+        solution_blob = JLD2.load("landau_experiment/blob_n_$(n)_runs_$(NUMRUNS)_start_$(START).jld2", "solution")
+        pdf_plt = pdf_plot([solution_sbtm, solution_blob], ["sbtm", "blob"], ε, time_index, num_runs=NUMRUNS)
         push!(plots, pdf_plt)
     end
     plot(plots..., layout = (2,3), size = (1600, 900))
@@ -65,19 +70,18 @@ savefig(plt, "plots/landau 3d slice pdfs combined, start $START")
 
 "Change n, plot Lp error of k-particles marginal at end time vs n."
 function Lp_error_experiment(d=3; p=2, k=3, verbose = 0, kwargs...)
-    ns = [50, 100, 200, 400, 500, 1000, 2000, 4000, 10_000, 20_000]
+    # ns = [50, 100, 200, 400, 500, 1000, 2000, 4000, 10_000, 20_000]
     t_range = SAVEAT
-    num_runs = 5
     plots = []
     for (i,t) in enumerate(t_range)
         sbtm_errors = Float64[]
         blob_errors = Float64[]
         @views for n in ns
-            ε = rec_epsilon(n)
-            solution_sbtm = JLD2.load("landau_experiment/sbtm_n_$(n)_runs_$(num_runs)_start_$(START).jld2", "solution")
-            solution_blob = JLD2.load("landau_experiment/blob_n_$(n)_runs_$(num_runs)_start_$(START).jld2", "solution")
-            lp_error_sbtm = Lp_error_slice(solution_sbtm[i], x->true_pdf(x, K(t)); reconstruct_ε = ε, p=p, k=k, verbose = verbose, kwargs...)
-            lp_error_blob = Lp_error_slice(solution_blob[i], x->true_pdf(x, K(t)); reconstruct_ε = ε, p=p, k=k, verbose = verbose, kwargs...)
+            # ε = rec_epsilon(n)
+            solution_sbtm = JLD2.load("landau_experiment/sbtm_n_$(n)_runs_$(NUMRUNS)_start_$(START).jld2", "solution")
+            solution_blob = JLD2.load("landau_experiment/blob_n_$(n)_runs_$(NUMRUNS)_start_$(START).jld2", "solution")
+            lp_error_sbtm = Lp_error_slice(solution_sbtm[i], x->true_pdf(x, K(t)); p=p, k=k, verbose = verbose, kwargs...)
+            lp_error_blob = Lp_error_slice(solution_blob[i], x->true_pdf(x, K(t)); p=p, k=k, verbose = verbose, kwargs...)
             push!(sbtm_errors, lp_error_sbtm)
             push!(blob_errors, lp_error_blob)
         end
@@ -87,21 +91,17 @@ function Lp_error_experiment(d=3; p=2, k=3, verbose = 0, kwargs...)
     Lp_plots = plot(plots..., layout = (length(plots), 1), size = (1000, 1000))
 end
 
-L2_errror_plot = Lp_error_experiment(;k=3, verbose = 1, max_evals=5*10^4, xlim = 5, atol = 0.001)
+L2_errror_plot = Lp_error_experiment(;k=3, verbose = 1, max_evals=5*10^4, xlim = 5, atol = 0.0005)
 savefig(L2_errror_plot, "plots/landau 3d L2 error combined")
 
 ############ score plots ############
 
-function score_experiment(ns)
-    # losses = JLD2.load("landau_experiment/sbtm_n_$(n).jld2", "losses")
-    # loss_plot = plot_losses(losses)
-
+function score_experiment()
     ts = SAVEAT
-    num_runs = 5
-    plt = plot(title = "landau NN error, $(num_runs) runs, start $START, 1/n ∑ᵢ|s(Xᵢ) - ∇log ρ(Xᵢ)|^2", xlabel = "time", ylabel = "error", size = (1000, 600))
+    plt = plot(title = "landau NN error, $(NUMRUNS) runs, start $START, 1/n ∑ᵢ|s(Xᵢ) - ∇log ρ(Xᵢ)|^2", xlabel = "time", ylabel = "error", size = (1000, 600))
     for n in ns
-        solution = JLD2.load("landau_experiment/sbtm_n_$(n)_runs_$(num_runs)_start_$START.jld2", "solution")
-        s_values = JLD2.load("landau_experiment/sbtm_n_$(n)_runs_$(num_runs)_start_$START.jld2", "s_values")
+        solution = JLD2.load("landau_experiment/sbtm_n_$(n)_runs_$(NUMRUNS)_start_$START.jld2", "solution")
+        s_values = JLD2.load("landau_experiment/sbtm_n_$(n)_runs_$(NUMRUNS)_start_$START.jld2", "s_values")
         errors = zeros(length(ts))
         @views for (k,t) in enumerate(ts)
             xs = solution[k]
@@ -114,7 +114,7 @@ function score_experiment(ns)
     plt
 end
 
-score_plot = score_experiment([200, 400, 1000, 2000, 4000, 10_000, 20_000])
+score_plot = score_experiment()
 savefig(score_plot, "plots/landau 3d NN error, start $START")
 
 ############ moments plots ############
@@ -128,9 +128,8 @@ end
 split_into_runs(xs :: AbstractArray{T, 2}, num_runs) where T = reshape(xs, size(xs, 1), :, num_runs)
 
 function moment_experiment(d=3)
-    ns = [50, 100, 200, 400, 500, 1000, 2000, 4000, 10_000, 20_000]
+    # ns = [50, 100, 200, 400, 500, 1000, 2000, 4000, 10_000, 20_000]
     t_range = SAVEAT
-    num_runs = 5
     plots = []
     for (i,t) in enumerate(t_range)
         means_sbtm = []
@@ -138,12 +137,12 @@ function moment_experiment(d=3)
         covs_sbtm = []
         covs_blob = []
         @views for n in ns
-            solution_sbtm = JLD2.load("landau_experiment/sbtm_n_$(n)_runs_$(num_runs)_start_$(START).jld2", "solution")
-            solution_blob = JLD2.load("landau_experiment/blob_n_$(n)_runs_$(num_runs)_start_$(START).jld2", "solution")
+            solution_sbtm = JLD2.load("landau_experiment/sbtm_n_$(n)_runs_$(NUMRUNS)_start_$(START).jld2", "solution")
+            solution_blob = JLD2.load("landau_experiment/blob_n_$(n)_runs_$(NUMRUNS)_start_$(START).jld2", "solution")
             push!(means_sbtm, mean(empirical_first_moment(solution_sbtm[i])))
             push!(means_blob, mean(empirical_first_moment(solution_blob[i])))
-            push!(covs_sbtm, average_covariance(solution_sbtm[i], num_runs))
-            push!(covs_blob, average_covariance(solution_blob[i], num_runs))
+            push!(covs_sbtm, average_covariance(solution_sbtm[i], NUMRUNS))
+            push!(covs_blob, average_covariance(solution_blob[i], NUMRUNS))
         end
         mean_plt = mean_diff_plot(ns, [means_sbtm, means_blob], true_mean(K(t)), ["sbtm", "blob"], [:red, :green], t, d, "landau")
         cov_norm_plot = covariance_diff_norm_plot(ns, [covs_sbtm, covs_blob], true_cov(K(t)), ["sbtm", "blob"], [:red, :green], t, d, "landau")

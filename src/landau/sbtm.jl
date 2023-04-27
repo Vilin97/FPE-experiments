@@ -27,14 +27,17 @@ function sbtm_landau_solve(xs, ts :: AbstractVector{T}, s; epochs = 25, verbose 
     tspan = (zero(T), ts[end])
     dt = ts[2] - ts[1]
     initial = xs
-    s_values = zeros(T, size(xs)..., length(ts))
+    s_values = zeros(T, size(xs)..., length(saveat))
     losses = zeros(T, epochs, length(ts))
     # train s_ in a callback
     function affect!(integrator)
         DifferentialEquations.u_modified!(integrator, false)
         k = integrator.iter + 1
         xs = integrator.u
-        record_s_values && (s_values[:, :, k] .= s(xs))
+        if record_s_values
+            idx = findfirst(x -> x ≈ integrator.t, saveat)
+            idx !== nothing && (s_values[:, :, idx] .= s(xs))
+        end
         state = Flux.setup(optimiser, s)
         @timeit "update NN" for epoch in 1:epochs
             loss_value, grads = withgradient(s -> loss(s, xs), s)

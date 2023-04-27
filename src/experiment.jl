@@ -108,8 +108,8 @@ function do_experiment(ds, experiment, experiment_name; methods = [sbtm, blob], 
     print_timer()
 end
 
-function landau_sbtm_experiment(;num_runs = 5, verbose = 1)
-    ns = [50, 100, 200, 400, 500, 1000, 2000, 4000, 10_000, 20_000]
+function landau_sbtm_experiment(;num_runs = 10, verbose = 1)
+    ns = [2_500, 5_000, 10_000, 20_000, 40_000, 80_000]
     # ns = [50]
     start_time = 6
     pre_trained_s = load("models/landau_model_n_4000_start_6.jld2", "s")
@@ -121,7 +121,7 @@ function landau_sbtm_experiment(;num_runs = 5, verbose = 1)
         ρ₀(x) = ρ(x,K(0))
         combined_solution = [zeros(size(xs, 1), size(xs, 2)*num_runs) for _ in saveat]
         println("n = $n")
-        combined_s_values = zeros(eltype(xs), size(xs)..., length(ts), num_runs)
+        combined_s_values = zeros(eltype(xs), size(xs)..., length(saveat), num_runs)
         @timeit "n = $n" for run in 1:num_runs
             seed!(run)
             xs, ts, ρ = landau(n, start_time)
@@ -144,10 +144,10 @@ function landau_sbtm_experiment(;num_runs = 5, verbose = 1)
     end
     print_timer()
 end
-landau_sbtm_experiment(num_runs=5)
+landau_sbtm_experiment()
 
-function landau_blob_experiment(;num_runs = 5, verbose = 1)
-    ns = [50, 100, 200, 400, 500, 1000, 2000, 4000, 10_000, 20_000]
+function landau_blob_experiment(;num_runs = 10, verbose = 1)
+    ns = [2_500, 5_000, 10_000, 20_000, 40_000]
     # ns = [50]
     start_time = 6
     reset_timer!()
@@ -175,7 +175,7 @@ function landau_blob_experiment(;num_runs = 5, verbose = 1)
     end
     print_timer()
 end
-landau_blob_experiment(num_runs=5)
+landau_blob_experiment()
 
 # sol1=load("landau_experiment/sbtm_n_10000_runs_5.jld2", "solution")
 # sol2=load("landau_experiment/blob_n_10000_runs_5.jld2", "solution")

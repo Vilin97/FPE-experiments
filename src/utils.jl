@@ -77,7 +77,8 @@ marginal(dist :: MvNormal, k=1) = MvNormal(mean(dist)[1:k], cov(dist)[1:k, 1:k])
 
 slice(f, d, k) = x -> f([x..., zeros(d-k)...])
 
-function Lp_error_slice(u :: AbstractArray, true_pdf; ε = 0.1, p = 2, verbose = 0, xlim = 10, k = 1, max_evals = 10^5, rtol = 0.05, kwargs...)
+function Lp_error_slice(u :: AbstractArray, true_pdf; p = 2, verbose = 0, xlim = 10, k = 1, max_evals = 10^5, rtol = 0.05, kwargs...)
+    ε = rec_epsilon(num_particles(u))
     d = get_d(u)
     empirical_slice(x) = reconstruct_pdf(ε, [x..., zeros(d-k)...], u)
     true_slice(x) = true_pdf([x..., zeros(d-k)...])
@@ -166,7 +167,7 @@ epsilon(d, n, c = 1., k=1) = c * 4000. ^(k/2) / (20. * n^(k/d))
 "reconstruction epsilon = 2*h^2"
 rec_epsilon(n) = 2 * kde_bandwidth(n)^2
 "kernel bandwidth h ~ n^(-1/(d+4))"
-kde_bandwidth(n, d = 3) = n^(-1/(d+4)) 
+kde_bandwidth(n, d = 3) = n^(-1/(d+4)) / √2
 
 function landau(n, start_time; dt = 0.01, time_interval = 0.5)
     K(t) = 1 - exp(-(t+start_time)/6)
