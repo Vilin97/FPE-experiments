@@ -25,15 +25,16 @@ end
 function sbtm_landau_solve(xs, ts :: AbstractVector{T}, s; epochs = 25, verbose = 0, optimiser = Adam(10^-4), record_s_values = false, record_losses = false, saveat=ts[[(end+1) ÷ 2, end]], kwargs...) where T
     verbose > 1 && println("Saving at time $saveat")
     tspan = (zero(T), ts[end])
+    dt = ts[2] - ts[1]
     initial = xs
     s_values = zeros(T, size(xs)..., length(ts))
-    record_s_values && (s_values[:, :, 1] .= s(xs))
     losses = zeros(T, epochs, length(ts))
-    k = 1
     # train s_ in a callback
     function affect!(integrator)
         DifferentialEquations.u_modified!(integrator, false)
+        k = integrator.iter + 1
         xs = integrator.u
+        record_s_values && (s_values[:, :, k] .= s(xs))
         state = Flux.setup(optimiser, s)
         @timeit "update NN" for epoch in 1:epochs
             loss_value, grads = withgradient(s -> loss(s, xs), s)
@@ -41,16 +42,14 @@ function sbtm_landau_solve(xs, ts :: AbstractVector{T}, s; epochs = 25, verbose 
             record_losses && (losses[epoch, k] = loss_value)
             verbose > 2 && println("Epoch $epoch, loss = $loss_value.")
         end
-        verbose > 2 && println("loss = $(loss(s, xs)).")
-        record_s_values && (s_values[:, :, k] .= s(xs))
-        k += 1
+        verbose > 1 && println("Time $(integrator.t), loss = $(loss(s, xs)).")
     end
     cb = PresetTimeCallback(ts, affect!, save_positions=(false,false))
     
     s_values_temp = similar(s(xs))
     p = (s, s_values_temp)
     ode_problem = ODEProblem(landau_f_sbtm!, initial, tspan, p)
-    solution = solve(ode_problem, alg = Euler(), saveat=saveat, tstops = ts, callback = cb)
+    solution = solve(ode_problem, alg = Euler(), saveat=saveat, dt = dt, callback = cb)
     solution :: ODESolution, s_values, losses
 end
 

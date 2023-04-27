@@ -63,7 +63,7 @@ function landau_test()
     println("L$p error for blob is $error.")
     @test error < tol
 
-    @timeit "sbtm" sbtm_solution = sbtm_landau(xs, ts; ρ₀ = x->f(x, K(0)), saveat = ts[[1, end]], verbose = 1, loss_tolerance = 1e-3)
+    @timeit "sbtm" sbtm_solution, _, _ = sbtm_landau(xs, ts; ρ₀ = x->f(x, K(0)), saveat = ts[[1, end]], verbose = 1, loss_tolerance = 1e-3)
     error = Lp_error(sbtm_solution[end], x -> f(x, K(time_interval)); reconstruction_ε = reconstruction_ε, k=3, verbose = 1)
     println("L$p error for sbtm is $error.")
     @test error < tol

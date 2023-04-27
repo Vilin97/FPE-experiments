@@ -1,6 +1,27 @@
 using Statistics, LinearAlgebra, Distributions, HCubature, Zygote, DifferentialEquations
 import Distributions.gradlogpdf
 
+"1-α confidence interval"
+function kde_ci(kde_approx_value, true_pdf_value, n, ε, d; α = 0.05, kernel_l2_squared = (4π)^(-d/2))
+    h = (ε/2)^(1/2) # ε = 2 * h^2
+    amplitude = sqrt(true_pdf_value * kernel_l2_squared / (n*h^d))
+    pm = amplitude * quantile(Normal(0,1), 1-α/2)
+    (kde_approx_value - pm, kde_approx_value + pm)
+end
+
+function kde_cis(kde_approx_values :: AbstractArray, true_pdf_values :: AbstractArray, n, ε, d; kwargs...)
+    cis = [kde_ci(kde_approx_values[i], true_pdf_values[i], n, ε, d; kwargs...) for i in eachindex(kde_approx_values)]
+    lower = [ci[1] for ci in cis]
+    upper = [ci[2] for ci in cis]
+    lower, upper
+end
+
+function kde_cis(xs, kde_fun :: Function, true_pdf :: Function, n, ε, d; kwargs...)
+    kde_approx_values = kde_fun.(xs)
+    true_pdf_values = true_pdf.(xs)
+    kde_cis(kde_approx_values, true_pdf_values, n, ε, d; kwargs...)
+end
+
 "sum of squares of the elements of z"
 function normsq(z)
     res = zero(eltype(z))
@@ -142,7 +163,10 @@ end
 epsilon(d, n, c = 1., k=1) = c * 4000. ^(k/2) / (20. * n^(k/d))
 
 ######## Landau equation in 3D ########
-epsilon_landau(n, L = 4.) = 0.64 * (2L/n) # h = 2L/n, and ε = 0.64 h^1.98
+"reconstruction epsilon = 2*h^2"
+rec_epsilon(n) = 2 * kde_bandwidth(n)^2
+"kernel bandwidth h ~ n^(-1/(d+4))"
+kde_bandwidth(n, d = 3) = n^(-1/(d+4)) 
 
 function landau(n, start_time; dt = 0.01, time_interval = 0.5)
     K(t) = 1 - exp(-(t+start_time)/6)

@@ -108,7 +108,6 @@ function do_experiment(ds, experiment, experiment_name; methods = [sbtm, blob], 
     print_timer()
 end
 
-# TODO: train the NN to approximate the initial score once, on many particles. Save it. Then use it for all the other experiments.
 function landau_sbtm_experiment(;num_runs = 5, verbose = 1)
     ns = [50, 100, 200, 400, 500, 1000, 2000, 4000, 10_000, 20_000]
     # ns = [50]

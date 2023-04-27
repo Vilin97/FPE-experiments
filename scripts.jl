@@ -410,13 +410,14 @@ plot(test_error_plt, size = (2000, 1500))
 
 
 # testing how callback works
-using DifferentialEquations, TimerOutputs, BenchmarkTools
+using DifferentialEquations, TimerOutputs
 ts = 0.0:0.1:1.0
 affect!(integrator) = (DifferentialEquations.u_modified!(integrator, false)); nothing
-cb = PresetTimeCallback(ts, affect!, save_positions=(false,false))
-f!(du,u,p,t) = @timeit "f!" (du .= u)
+cb = PresetTimeCallback(ts .+ 1e-6, affect!, save_positions=(false,false))
+function f!(du,u,p,t) 
+    @timeit "f!" (du .= u)
+end
 prob = ODEProblem(f!, [1.0], (0.0,1.0))
-
 
 reset_timer!()
 solution1 = solve(prob, alg = Euler(), saveat=ts, tstops = ts)
@@ -425,8 +426,15 @@ reset_timer!()
 solution2 = solve(prob, alg = Euler(), saveat=ts, tstops = ts, callback = cb)
 print_timer() # f! ncalls = 21
 reset_timer!()
-solution2 = solve(prob, alg = Euler(), saveat=ts, dt = 0.1, callback = cb)
-print_timer()
+solution3 = solve(prob, alg = Euler(), saveat=ts, dt = 0.1, callback = cb)
+print_timer() # f! ncalls = 12
+reset_timer!()
+solution4 = solve(prob, alg = Euler(), saveat=ts, dt = 0.1, tstops = ts, callback = cb)
+print_timer() # f! ncalls = 12
+
+maximum(abs, vcat((solution1.u .- solution3.u)...)) # 2.36e-7
+maximum(abs, vcat((solution1.u .- solution2.u)...)) # 2.36e-6
+maximum(abs, vcat((solution2.u .- solution3.u)...)) # 2.12e-6
 
 @btime solve($prob, alg = $(Euler()), tstops = $ts) #  5.750 μs (79 allocations: 5.75 KiB)
 @btime solve($prob, alg = $(Euler()), tstops = $ts, callback = $cb) # 7.875 μs (83 allocations: 6.22 KiB)
@@ -679,3 +687,74 @@ fun_lv!(dxs_t, xs_t, s_values_t)
 @btime fun_cartesian!($dxs_t, $xs_t, $s_values_t)
 @btime fun_lv!($dxs, $xs, $s_values)
 @btime fun_lv!($dxs_t, $xs_t, $s_values_t)
+
+# tuning learning rate for Landau
+using JLD2, TimerOutputs, Plots
+include("src/utils.jl")
+include("src/sbtm.jl")
+include("src/landau/sbtm.jl")
+include("src/blob.jl")
+include("src/landau/blob.jl")
+include("src/plotting_utils.jl")
+
+const START = 6
+a(K) = (5K-3)/(2K)
+b(K) = (1-K)/(2K^2)
+K(t) = 1 - exp(-(t+START)/6)
+true_pdf(x, K) = (a(K) + b(K)*sum(abs2, x)) * (2π*K)^(-3/2) * exp(-sum(abs2, x)/(2K))
+true_slice(x, K) = true_pdf([x,0,0], K)
+K(t) = 1 - exp(-(t+start_time)/6)
+
+start_time = 6
+pre_trained_s = load("models/landau_model_n_4000_start_6.jld2", "s")
+
+n = 10_000
+xs, ts, ρ = landau(n, start_time)
+saveat = ts
+s_ = deepcopy(pre_trained_s)
+@timeit "initialize NN" initialize_s!(s_, x -> ρ(x,K(0)), xs, loss_tolerance = 5e-4, verbose = 2, max_iter = 10^4)
+
+lrs = 10 .^ (-6:0.5:-3)
+sols = []
+for lr in lrs
+    s = deepcopy(s_)
+    solution, s_values, losses = sbtm_landau(xs, ts; s = s, verbose = 2, saveat = saveat, record_s_values = true, record_losses = true, optimiser = Adam(lr))
+    push!(sols, (solution, s_values, losses))
+end
+
+plotly()
+plt = plot(title = "landau NN error, start $START, ∑ᵢ|s(Xᵢ) - ∇log ρ(Xᵢ)|^2 / ∑ᵢ|∇log ρ(Xᵢ)|^2", xlabel = "time", ylabel = "error", size = (1000, 600));
+for (i,lr) in enumerate(lrs)
+    solution, s_values, _ = sols[i]
+
+    errors = zeros(length(ts))
+    @views for (k,t) in enumerate(ts)
+        xs = solution[k]
+        ys = score(x -> true_pdf(x, K(t)), xs)
+        errors[k] = sum(abs2, s_values[:,:,k] .- ys) / sum(abs2, ys)
+    end
+    plot!(plt, ts, errors, label = "lr = $lr", marker = :circle, markersize = 3, linewidth = 2)
+end
+pdf_plt = pdf_plot([sol for (sol, _, _) in sols], ["lr $lr" for lr in lrs], rec_epsilon(n), 1, ts);
+plot(pdf_plt, size = (1000, 600))
+losses_plt = plot();
+for (i,lr) in enumerate(lrs)
+    _, _, losses = sols[i]
+    plot_losses!(losses_plt, losses, label = "lr = $lr")
+end
+losses_plt
+plt
+losses_plt
+plot(plt, pdf_plt, layout = (2,1), size = (1600, 1000))
+
+s = deepcopy(s_)
+reset_timer!()
+solution, s_values, losses = sbtm_landau(xs, ts; s = s, verbose = 2, saveat = saveat, record_s_values = true)
+print_timer()
+solution[1] == xs
+t = ts[1]
+ys = score(x -> true_pdf(x, K(t)), solution[1])
+sum(abs2, s_values[:,:,1] .- ys) / sum(abs2, ys)
+sum(abs2, s_(xs) .- ys) / sum(abs2, ys)
+
+maximum(abs, solution[1] .- solution[2])
