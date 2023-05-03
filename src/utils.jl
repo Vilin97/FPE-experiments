@@ -25,15 +25,24 @@ end
 "sum of squares of the elements of z"
 function normsq(z)
     res = zero(eltype(z))
-    @fastmath for zi in z
+    for zi in z
         res += zi*zi
+    end
+    res
+end
+
+"sum of squares of the elements of z1 - z2"
+function normsq(z1, z2)
+    res = zero(eltype(z1))
+    for i in eachindex(z1)
+        res += (z1[i] - z2[i])^2
     end
     res
 end
 
 function fastdot(z, v)
     res = zero(eltype(z))
-    @fastmath for i in eachindex(z)
+    for i in eachindex(z)
         res += z[i]*v[i]
     end
     res
@@ -57,14 +66,12 @@ gradlogpdf(f :: Function, x) = gradient(log ∘ f, x)[1]
 mol(ε, x) = exp(-sum(abs2, x)/ε)/sqrt((π*ε)^length(x)) # = pdf(MvNormal(ε/2*I(length(x))), x)
 grad_mol(ε, x) = -2/ε*mol(ε, x) .* x
 Mol(ε, x, xs :: AbstractArray{T, 3}) where T = sum( mol(ε, x .- x_q) for x_q in eachslice(xs, dims=3) )
-function Mol(ε, x, xs :: AbstractArray{T, 2}) where T
+function Mol(ε, x, xs::AbstractArray{T,2}) where T
     res = zero(eltype(xs))
     d = length(x)
     eps_recip = 1/ε
-    temp = similar(x)
-    @fastmath for x_q in eachcol(xs)
-        temp .= x .- x_q
-        res += exp(-normsq(temp)*eps_recip)
+    for x_q in eachcol(xs)
+        res += exp(-normsq(x,x_q)*eps_recip)
     end
     res/sqrt((π*ε)^d)
 end
@@ -77,22 +84,36 @@ marginal(dist :: MvNormal, k=1) = MvNormal(mean(dist)[1:k], cov(dist)[1:k, 1:k])
 
 slice(f, d, k) = x -> f([x..., zeros(d-k)...])
 
-function Lp_error_slice(u :: AbstractArray, true_pdf; p = 2, verbose = 0, xlim = 10, k = 1, max_evals = 10^5, rtol = 0.05, kwargs...)
-    ε = rec_epsilon(num_particles(u))
+function Lp_error_slice(u :: AbstractArray, true_pdf; k = 2, p = 2, verbose = 0, xlim = 10, rtol = 0.1, kwargs...)
     d = get_d(u)
-    empirical_slice(x) = reconstruct_pdf(ε, [x..., zeros(d-k)...], u)
-    true_slice(x) = true_pdf([x..., zeros(d-k)...])
-    diff(x) = (empirical_slice(x) - true_slice(x))^p 
-    error, accuracy = hcubature(diff, fill(-xlim, k), fill(xlim, k), maxevals = max_evals, rtol = rtol)
-    verbose > 0 && (println("L$p error integration accuracy = $accuracy"))
-    max(eps(), error)^(1/p)
+    ε = rec_epsilon(num_particles(u))
+    diff(x) = (reconstruct_pdf(ε, x, u) - true_pdf(x))^p 
+    diff_slice = slice(diff, d, k)
+    integrand, accuracy = hcubature(diff_slice, fill(-xlim, k), fill(xlim, k), rtol = rtol)
+    if accuracy > rtol*abs(integrand)
+        error("accuracy = $accuracy < $integrand*$rtol = Lp integrand*rtol")
+    end
+    verbose > 0 && (println("relative integration error ~ $(accuracy/abs(integrand))"))
+    max(eps(), integrand)^(1/p)
+end
+
+function Lp_error(u :: AbstractArray, true_pdf; p = 2, verbose = 0, xlim = 10, max_evals = 2*10^4, rtol = 0.1, kwargs...)
+    d = get_d(u)
+    ε = rec_epsilon(num_particles(u))
+    diff(x) = (reconstruct_pdf(ε, x, u) - true_pdf(x))^p 
+    integrand, accuracy = hcubature(diff, fill(-xlim, d), fill(xlim, d), maxevals = max_evals, rtol = rtol)
+    if accuracy > rtol*abs(integrand)
+        error("accuracy = $accuracy < $integrand*$rtol = Lp integrand*rtol")
+    end
+    verbose > 0 && (println("relative integration error ~ $(accuracy/abs(integrand))"))
+    max(eps(), integrand)^(1/p)
 end
 
 "Lp error between the reconstructed pdf and the true pdf at time t. pdf(x :: AbstractArray{T,k})"
-function Lp_error(u_ :: AbstractArray, pdf; ε = 0.1, p = 2, verbose = 0, xlim = 10, k = 1, max_evals = 10^5, rtol = 0.05, kwargs...)
+function Lp_error_marginal(u_ :: AbstractArray, pdf; ε = 0.1, p = 2, verbose = 0, xlim = 10, k = 1, max_evals = 10^5, rtol = 0.05, kwargs...)
     n = num_particles(u_)
     d = get_d(u_)
-    u = @view reshape(u_, d, n)[1:k, :]
+    u = reshape(u_, d, n)[1:k, :]
     empirical_pdf(x) = reconstruct_pdf(ε, x, u)
     diff(x) = (empirical_pdf(x) - pdf(x))^p 
     error, accuracy = hcubature(diff, fill(-xlim, k), fill(xlim, k), maxevals = max_evals, rtol = rtol)
@@ -100,12 +121,12 @@ function Lp_error(u_ :: AbstractArray, pdf; ε = 0.1, p = 2, verbose = 0, xlim =
     max(eps(), error)^(1/p)
 end
 
-function Lp_error(solution :: ODESolution, t_index, pdf; kwargs...)
+function Lp_error_marginal(solution :: ODESolution, t_index, pdf; kwargs...)
     Lp_error(solution[t_index], pdf; kwargs...)
 end
 
 "true_solution(t) :: MvNormal"
-function Lp_error(solution :: ODESolution, true_solution, t; k = 1, kwargs...)
+function Lp_error_marginal(solution :: ODESolution, true_solution, t; k = 1, kwargs...)
     true_marginal = marginal(true_solution(t), k)
     Lp_error(solution(t), x -> pdf(true_marginal, x); k=k, kwargs...)
 end

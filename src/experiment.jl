@@ -144,11 +144,11 @@ function landau_sbtm_experiment(;num_runs = 10, verbose = 1)
     end
     print_timer()
 end
-landau_sbtm_experiment()
+# landau_sbtm_experiment()
 
 function landau_blob_experiment(;num_runs = 10, verbose = 1)
-    ns = [2_500, 5_000, 10_000, 20_000, 40_000]
-    # ns = [50]
+    # ns = [2_500, 5_000, 10_000, 20_000, 40_000]
+    ns = [80_000]
     start_time = 6
     reset_timer!()
     for n in ns
