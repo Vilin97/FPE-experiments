@@ -132,12 +132,17 @@ function score_experiment()
     for n in ns
         solution = JLD2.load("landau_experiment/sbtm_n_$(n)_runs_$(NUMRUNS)_start_$START.jld2", "solution")
         combined_models = JLD2.load("landau_experiment/sbtm_n_$(n)_runs_$(NUMRUNS)_start_$START.jld2", "models")
-        # s_values = JLD2.load("landau_experiment/sbtm_n_$(n)_runs_$(NUMRUNS)_start_$START.jld2", "s_values")
         errors = zeros(length(ts))
+        s_values = zeros(Float32, get_d(solution[1]), n, NUMRUNS)
         @views for (k,t) in enumerate(ts)
+            @show n, t
             xs = solution[k]
+            split_xs = reshape(xs, size(xs, 1), :, NUMRUNS)
+            for run in 1:NUMRUNS
+                @views s_values[:,:,run] .= combined_models[k, run](split_xs[:,:,run])
+            end
             ys = score(x -> true_pdf(x, K(t)), xs)
-            errors[k] = sum(abs2, reshape(s_values[:,:,k,:], :, n*NUMRUNS) .- ys)/sum(abs2, ys .- mean(ys, dims = 2))
+            errors[k] = sum(abs2, reshape(s_values, :, n*NUMRUNS) .- ys)/sum(abs2, ys .- mean(ys, dims = 2))
         end
         plot!(plt, ts, 1 .- errors, label = "n = $n", marker = :circle, markersize = 3, linewidth = 2)
     end

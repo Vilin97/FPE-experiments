@@ -18,11 +18,12 @@ s   : NN to approximate score ∇log ρ
 """
 function sbtm_landau(xs, ts; ρ₀ = nothing, s = nothing, size_hidden=100, num_hidden=2, error_tolerance = 1e-3, kwargs...)
     isnothing(s) && isnothing(ρ₀) && error("Must provide either s or ρ₀.")
-    isnothing(s) ? (s_new = initialize_s(ρ₀, xs, size_hidden, num_hidden; error_tolerance = error_tolerance, kwargs...)) : (s_new = deepcopy(s))
+    isnothing(s) ? (s_new = initialize_s(ρ₀, Float32.(xs), size_hidden, num_hidden; error_tolerance = error_tolerance, kwargs...)) : (s_new = deepcopy(s))
     solution, s_values, losses = sbtm_landau_solve(Float32.(xs), Float32.(ts), s_new; kwargs...)
 end
 
-function sbtm_landau_solve(xs, ts :: AbstractVector{T}, s; epochs = 25, verbose = 0, optimiser = Adam(10^-4), denoising_alpha = T(0.4), record_models = false, record_losses = false, saveat=ts[[(end+1) ÷ 2, end]]) where T
+# TODO check that Float32 is preserved throughout
+function sbtm_landau_solve(xs, ts :: AbstractVector{T}, s; epochs = 25, verbose = 0, optimiser = Adam(10^-4), denoising_alpha = T(0.4), record_models = false, record_losses = false, saveat=ts[[(end+1) ÷ 2, end]], kwargs...) where T
     verbose > 0 && println("SBTM method. n = $(num_particles(xs)).")
     verbose > 1 && println("Saving at time $saveat")
     tspan = (zero(T), ts[end])
