@@ -78,11 +78,19 @@ end
 Mol(ε, x, xs :: AbstractVector) = sum( mol(ε, x - x_q) for x_q in xs )
 
 reconstruct_pdf(ε, x, u :: AbstractVector) = Mol(ε, x, u)/length(u)
-reconstruct_pdf(ε, x, u :: AbstractMatrix) = Mol(ε, x, u)/size(u, 2)
+reconstruct_pdf(ε, x, u :: AbstractMatrix) = (@assert length(x) == get_d(u); Mol(ε, x, u)/size(u, 2))
 reconstruct_pdf(ε, x, u :: AbstractArray{T, 3}) where T = reconstruct_pdf(ε, x, reshape(u, :, size(u, 3)))
+reconstruct_pdf(x, u) = reconstruct_pdf(rec_epsilon(num_particles(u)), x, u)
 marginal(dist :: MvNormal, k=1) = MvNormal(mean(dist)[1:k], cov(dist)[1:k, 1:k])
 
 slice(f, d, k) = x -> f([x..., zeros(d-k)...])
+
+"1/n ∑ᵢ [log rec_pdf(xᵢ) - log true_pdf(xᵢ)]"
+function KL_divergence(u :: AbstractArray, true_pdf)
+    n = num_particles(u)
+    Z = sum(true_pdf, eachcol(u))
+    sum(x -> log(Z/n/true_pdf(x)), eachcol(u))/n
+end
 
 function Lp_error_slice(u :: AbstractArray, true_pdf; k = 2, p = 2, verbose = 0, xlim = 10, rtol = 0.1, kwargs...)
     d = get_d(u)
@@ -186,7 +194,7 @@ epsilon(d, n, c = 1., k=1) = c * 4000. ^(k/2) / (20. * n^(k/d))
 
 ######## Landau equation in 3D ########
 "reconstruction epsilon = 2*h^2"
-rec_epsilon(n) = 2 * kde_bandwidth(n)^2
+rec_epsilon(n, d = 3) = 2 * kde_bandwidth(n, d)^2
 "kernel bandwidth h ~ n^(-1/(d+4))"
 kde_bandwidth(n, d = 3) = n^(-1/(d+4)) / √2
 

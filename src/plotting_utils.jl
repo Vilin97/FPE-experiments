@@ -41,19 +41,30 @@ function plot_losses!(p, losses :: AbstractMatrix; label = nothing, kwargs...)
     scatter!(p, 1:epochs:length(vec(losses)), vec(losses)[1:epochs:end], marker = true, label = nothing)
 end
 
-
+"ns = #particles, errors = kl divergences, t = time"
+function kl_div_plot(ns, errors, labels, colors, t, experiment_name)
+    plt = plot(title = "$experiment_name KL divergence, t = $t, log-log", ylabel = "KL divergence from true pdf", xaxis = :log, yaxis = :log, xlabel = "number of particles")
+    for (error, label, color) in zip(errors, labels, colors)
+        error_log = log.(error)
+        fit_log = Polynomials.fit(log.(ns), error_log, 1)
+        slope = round(fit_log.coeffs[2], digits = 2)
+        plot!(plt, ns, error, label = "t = $t, $label", marker = :circle, color = color)
+        poly = exp.( fit_log.(log.(ns)) )
+        plot!(plt, ns, poly, label = "$label slope $slope", color = color, opacity = 0.4)
+    end
+    plt
+end
 
 "ns = #particles, errors = Lp errors, t = time, d = dimension, k = #dimensions used, p = Lp norm"
 function Lp_error_plot(ns, errors, labels, colors, t, d, experiment_name, k, p)
     Lp_errors_plot = plot(title = "$(d)d $experiment_name L$p error, k = $k, t = $t, log-log", ylabel = "L$p error from true pdf", xaxis = :log, yaxis = :log, xlabel = "number of particles")
-    dense_ns = range(ns[1], ns[end], length = 1000)
     for (error, label, color) in zip(errors, labels, colors)
         error_log = log.(error)
         fit_log = Polynomials.fit(log.(ns), error_log, 1)
         slope = round(fit_log.coeffs[2], digits = 2)
         plot!(Lp_errors_plot, ns, error, label = (d==1 && t==0.5) ? "t = $t, $label" : nothing, marker = :circle, color = color)
-        poly = exp.( fit_log.(log.(dense_ns)) )
-        plot!(Lp_errors_plot, dense_ns, poly, label = "$label slope $slope", color = color, opacity = 0.4)
+        poly = exp.( fit_log.(log.(ns)) )
+        plot!(Lp_errors_plot, ns, poly, label = "$label slope $slope", color = color, opacity = 0.4)
     end
     Lp_errors_plot
 end

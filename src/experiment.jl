@@ -109,33 +109,33 @@ function do_experiment(ds, experiment, experiment_name; methods = [sbtm, blob], 
 end
 
 function landau_sbtm_experiment(;num_runs = 10, verbose = 1)
-    ns = [2_500, 5_000, 10_000, 20_000, 40_000, 80_000]
-    # ns = [50]
+    ns = [2_500, 5_000, 10_000, 20_000, 40_000, 80_000, 160_000]
+    # ns = [1_000]
     start_time = 6
     pre_trained_s = load("models/landau_model_n_4000_start_6.jld2", "s")
     K(t) = 1 - exp(-(t+start_time)/6)
     reset_timer!()
     for n in ns
         xs, ts, ρ = landau(n, start_time)
-        saveat = ts[[1, (length(ts)+1)÷2, end]]
+        saveat = ts[[1, 2, (length(ts)+1)÷2, end]]
         ρ₀(x) = ρ(x,K(0))
         combined_solution = [zeros(size(xs, 1), size(xs, 2)*num_runs) for _ in saveat]
         println("n = $n")
-        combined_s_values = zeros(eltype(xs), size(xs)..., length(saveat), num_runs)
+        combined_models = Matrix{Chain}(undef, length(saveat), num_runs)
         @timeit "n = $n" for run in 1:num_runs
             seed!(run)
             xs, ts, ρ = landau(n, start_time)
             s = deepcopy(pre_trained_s)
             @timeit "initialize NN" initialize_s!(s, ρ₀, xs, loss_tolerance = 1e-4, verbose = verbose, max_iter = 10^4)
-            solution, s_values, losses = sbtm_landau(xs, ts; s = s, verbose = verbose, loss_tolerance = 1e-4, saveat = saveat, record_s_values = true)
+            solution, models, losses = sbtm_landau(xs, ts; s = s, verbose = verbose, saveat = saveat, record_models = true)
             for i in 1:length(saveat)
                 combined_solution[i][:, (run-1)*size(xs, 2)+1:run*size(xs, 2)] .= solution.u[i]
+                combined_models[i, run] = models[i]
             end
-            combined_s_values[:, :, :, run] .= s_values
         end
         JLD2.save("landau_experiment/sbtm_n_$(n)_runs_$(num_runs)_start_$(start_time).jld2", 
         "solution", combined_solution,
-        "s_values", combined_s_values,
+        "models", combined_models,
         "saveat", saveat,
         "n", n,
         "num_runs", num_runs,
@@ -144,7 +144,7 @@ function landau_sbtm_experiment(;num_runs = 10, verbose = 1)
     end
     print_timer()
 end
-# landau_sbtm_experiment()
+landau_sbtm_experiment()
 
 function landau_blob_experiment(;num_runs = 10, verbose = 1)
     # ns = [2_500, 5_000, 10_000, 20_000, 40_000]
@@ -175,7 +175,4 @@ function landau_blob_experiment(;num_runs = 10, verbose = 1)
     end
     print_timer()
 end
-landau_blob_experiment()
-
-# sol1=load("landau_experiment/sbtm_n_10000_runs_5.jld2", "solution")
-# sol2=load("landau_experiment/blob_n_10000_runs_5.jld2", "solution")
+# landau_blob_experiment()

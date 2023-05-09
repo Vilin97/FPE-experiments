@@ -512,140 +512,140 @@ using StaticArrays
 using LoopVectorization
 
 function fun1!(dxs, xs, s_values)
-  n = size(dxs, 2)
-  z = zeros(3)
-  v = zeros(3)
-  @views for p = 1:n, q = 1:n
-    z .= xs[:, p] .- xs[:, q]
-    v .= s_values[:, q] .- s_values[:, p]
-    dotzv = dot(z, v)
-    normsqz = sum(abs2, z)
-    v .*= normsqz
-    v .-= dotzv .* z
-    dxs[:, p] .+= v
-  end
+    n = size(dxs, 2)
+    z = zeros(3)
+    v = zeros(3)
+    @views for p = 1:n, q = 1:n
+        z .= xs[:, p] .- xs[:, q]
+        v .= s_values[:, q] .- s_values[:, p]
+        dotzv = dot(z, v)
+        normsqz = sum(abs2, z)
+        v .*= normsqz
+        v .-= dotzv .* z
+        dxs[:, p] .+= v
+    end
 end
 
 function normsq(z)
-  res = zero(eltype(z))
-  @fastmath for zi in z
-    res += zi * zi
-  end
-  res
+    res = zero(eltype(z))
+    @fastmath for zi in z
+        res += zi * zi
+    end
+    res
 end
 
 function fastdot(z, v)
-  res = zero(eltype(z))
-  @fastmath for i in eachindex(z)
-    res += z[i] * v[i]
-  end
-  res
+    res = zero(eltype(z))
+    @fastmath for i in eachindex(z)
+        res += z[i] * v[i]
+    end
+    res
 end
 
-function fun2!(dxs, xs, s_values)  # with fastdot etc
-  n = size(dxs, 2)
-  z = zeros(3)
-  v = zeros(3)
-  @views for p = 1:n, q = 1:n
-    z .= xs[:, p] .- xs[:, q]
-    v .= s_values[:, q] .- s_values[:, p]
-    dotzv = fastdot(z, v)
-    normsqz = normsq(z)
-    v .*= normsqz
-    v .-= dotzv .* z
-    dxs[:, p] .+= v
-  end
+function fun2!(dxs, xs, s_values)   # with fastdot etc
+    n = size(dxs, 2)
+    z = zeros(3)
+    v = zeros(3)
+    @views for p = 1:n, q = 1:n
+        z .= xs[:, p] .- xs[:, q]
+        v .= s_values[:, q] .- s_values[:, p]
+        dotzv = fastdot(z, v)
+        normsqz = normsq(z)
+        v .*= normsqz
+        v .-= dotzv .* z
+        dxs[:, p] .+= v
+    end
 end
 
-function fun3!(dxs, xs, s_values)  # with fused broadcast
-  n = size(dxs, 2)
-  z = zeros(3)
-  v = zeros(3)
-  @views for p = 1:n, q = 1:n
-    z .= xs[:, p] .- xs[:, q]
-    v .= s_values[:, q] .- s_values[:, p]
-    dotzv = fastdot(z, v)
-    normsqz = normsq(z)
-    dxs[:, p] .+= v .* normsqz .- dotzv .* z
-  end
+function fun3!(dxs, xs, s_values)   # with fused broadcast
+    n = size(dxs, 2)
+    z = zeros(3)
+    v = zeros(3)
+    @views for p = 1:n, q = 1:n
+        z .= xs[:, p] .- xs[:, q]
+        v .= s_values[:, q] .- s_values[:, p]
+        dotzv = fastdot(z, v)
+        normsqz = normsq(z)
+        dxs[:, p] .+= v .* normsqz .- dotzv .* z
+    end
 end
 
 function fun3b!(Dxs, Xs, S_values)
-  n = size(Dxs, 2)
-  z = @SVector zeros(3)
-  v = @SVector zeros(3)
+    n = size(Dxs, 2)
+    z = @SVector zeros(3)
+    v = @SVector zeros(3)
 
-  dxs = reinterpret(SVector{3,Float64}, Dxs)
-  xs = reinterpret(SVector{3,Float64}, Xs)
-  s_values = reinterpret(SVector{3,Float64}, S_values)
+    dxs = reinterpret(SVector{3,Float64}, Dxs)
+    xs = reinterpret(SVector{3,Float64}, Xs)
+    s_values = reinterpret(SVector{3,Float64}, S_values)
 
-  for p = 1:n, q = 1:n
-    z = xs[p] - xs[q]
-    v = s_values[q] - s_values[p]
-    dotzv = dot(z, v)
-    normsqz = dot(z, z)
-    dxs[p] += v * normsqz - dotzv * z
-  end
+    for p = 1:n, q = 1:n
+        z = xs[p] - xs[q]
+        v = s_values[q] - s_values[p]
+        dotzv = dot(z, v)
+        normsqz = dot(z, z)
+        dxs[p] += v * normsqz - dotzv * z
+    end
 end
 function fun3c!(dxs, xs, s_values)
-  n = size(dxs, 2)
-  z = @MVector zeros(3)
-  v = @MVector zeros(3)
+    n = size(dxs, 2)
+    z = @MVector zeros(3)
+    v = @MVector zeros(3)
 
-  @views for p = 1:n, q = 1:n
-    z .= xs[:, p] .- xs[:, q]
-    v .= s_values[:, q] .- s_values[:, p]
-    dotzv = dot(z, v)
-    normsqz = sum(abs2, z)
-    dxs[:, p] .+= v .* normsqz .- dotzv .* z
-  end
-  return
+    @views for p = 1:n, q = 1:n
+        z .= xs[:, p] .- xs[:, q]
+        v .= s_values[:, q] .- s_values[:, p]
+        dotzv = dot(z, v)
+        normsqz = sum(abs2, z)
+        dxs[:, p] .+= v .* normsqz .- dotzv .* z
+    end
+    return
 end
 @fastmath function fun_cartesian!(dxs, xs, s_values)
-  n = size(dxs, 2)
-  @inbounds for p = 1:n
-    Base.Cartesian.@nexprs 3 i -> dx_i = zero(eltype(dxs))
-    for q = 1:n
-      dotzv = zero(eltype(dxs))
-      normsqz = zero(eltype(dxs))
-      Base.Cartesian.@nexprs 3 i -> begin
-        z_i = xs[i, p] - xs[i, q]
-        v_i = s_values[i, q] - s_values[i, p]
-        dotzv += z_i * v_i
-        normsqz += z_i * z_i
-      end
-      Base.Cartesian.@nexprs 3 i -> begin
-        dx_i += v_i * normsqz - dotzv * z_i
-      end
+    n = size(dxs, 2)
+    @inbounds for p = 1:n
+        Base.Cartesian.@nexprs 3 i -> dx_i = zero(eltype(dxs))
+        for q = 1:n
+            dotzv = zero(eltype(dxs))
+            normsqz = zero(eltype(dxs))
+            Base.Cartesian.@nexprs 3 i -> begin
+                z_i = xs[i, p] - xs[i, q]
+                v_i = s_values[i, q] - s_values[i, p]
+                dotzv += z_i * v_i
+                normsqz += z_i * z_i
+            end
+            Base.Cartesian.@nexprs 3 i -> begin
+                dx_i += v_i * normsqz - dotzv * z_i
+            end
+        end
+        Base.Cartesian.@nexprs 3 i -> begin
+            dxs[i, p] += dx_i
+        end
     end
-    Base.Cartesian.@nexprs 3 i -> begin
-      dxs[i, p] += dx_i
-    end
-  end
-  return
+    return
 end
 function fun_lv!(dxs, xs, s_values)
-  n = size(dxs, 2)
-  @turbo for p = 1:n
-    Base.Cartesian.@nexprs 3 i -> dx_i = zero(eltype(dxs))
-    for q = 1:n
-      dotzv = zero(eltype(dxs))
-      normsqz = zero(eltype(dxs))
-      Base.Cartesian.@nexprs 3 i -> begin
-        z_i = xs[i, p] - xs[i, q]
-        v_i = s_values[i, q] - s_values[i, p]
-        dotzv += z_i * v_i
-        normsqz += z_i * z_i
-      end
-      Base.Cartesian.@nexprs 3 i -> begin
-        dx_i += v_i * normsqz - dotzv * z_i
-      end
+    n = size(dxs, 2)
+    @turbo for p = 1:n
+        Base.Cartesian.@nexprs 3 i -> dx_i = zero(eltype(dxs))
+        for q = 1:n
+            dotzv = zero(eltype(dxs))
+            normsqz = zero(eltype(dxs))
+            Base.Cartesian.@nexprs 3 i -> begin
+                z_i = xs[i, p] - xs[i, q]
+                v_i = s_values[i, q] - s_values[i, p]
+                dotzv += z_i * v_i
+                normsqz += z_i * z_i
+            end
+            Base.Cartesian.@nexprs 3 i -> begin
+                dx_i += v_i * normsqz - dotzv * z_i
+            end
+        end
+        Base.Cartesian.@nexprs 3 i -> begin
+            dxs[i, p] += dx_i
+        end
     end
-    Base.Cartesian.@nexprs 3 i -> begin
-      dxs[i, p] += dx_i
-    end
-  end
-  return
+    return
 end
 
 n = 1000
@@ -758,3 +758,153 @@ sum(abs2, s_values[:,:,1] .- ys) / sum(abs2, ys)
 sum(abs2, s_(xs) .- ys) / sum(abs2, ys)
 
 maximum(abs, solution[1] .- solution[2])
+
+# hyperparameter sweep for sbtm, landau
+start_time = 6
+n = 5_000
+pre_trained_s = load("models/landau_model_n_4000_start_6.jld2", "s")
+K(t) = 1 - exp(-(t+start_time)/6)
+# seed!(1)
+xs, ts, ρ = landau(n, start_time)
+ρ₀(x) = ρ(x,K(0))
+saveat = [0.0, 0.01, 0.25, 0.5]
+s_ = deepcopy(pre_trained_s)
+@timeit "initialize NN" initialize_s!(s_, ρ₀, xs, loss_tolerance = 1e-4, verbose = 1, max_iter = 10^4)
+
+# sweep over learning rates. 10^-4 is best
+reset_timer!()
+print("lr sweep")
+lrs = [10^-5, 10^-4, 10^-3, 10^-2]
+for lr in lrs
+    sbtm_landau(xs, ts; s = s_, verbose = 1, saveat = saveat, record_s_values = true, optimiser = Adam(lr))
+end
+print_timer()
+
+gr()
+plots = []
+for t in [0.0, 0.01, 0.25, 0.5]
+    plt = plot()
+    plot!(plt,-2:0.01:2, x -> score(z -> true_pdf(z, K(t)), [x,0,0])[1], label = "true score at t = $t")
+    for lr in lrs
+        s = JLD2.load("models/landau_model_t_$(t)_n_$(n)_lr_$(lr)_α_$(0.4)_epochs_$(25)_layers_$(4).jld2", "s")
+        plot!(plt,-2:0.01:2, x -> s([x,0,0])[1], label = "learning rate = $(round(lr, digits=7)), t = $t");
+    end
+    push!(plots, plt)
+end
+plot(plots..., layout = (2, 2), size = (1800, 1300), title = "score NN")
+
+# sweep over denoising alphas. 0.4 is best
+reset_timer!()
+println("denoising alpha sweep")
+alphas = [1e-3, 1e-2, 0.1, 0.5, 1.]
+models_array = Matrix{Any}(undef, length(saveat), length(alphas))
+solutions = []
+for (j,alpha) in enumerate(alphas)
+    solution, models, _ = sbtm_landau(xs, ts; s = s_, verbose = 2, saveat = saveat, record_models = true, denoising_alpha = alpha)
+    models_array[:, j] .= models
+    push!(solutions, solution)
+end
+print_timer()
+
+gr()
+plots = []
+for (i,t) in enumerate(saveat)
+    plt = plot()
+    plot!(plt,-2:0.01:2, x -> score(z -> true_pdf(z, K(t)), [x,0,0])[1], label = "true score at t = $t")
+    for (j,alpha) in enumerate(alphas)
+        s = models_array[i,j]
+        u = solutions[j][i]
+        model_l2_error = (sum(abs2, s(u) - score(z -> true_pdf(z, K(t)), u)) / n)^(1/2)
+        println("t = $t, alpha = $alpha, error = $model_l2_error")
+        
+        plot!(plt,-2:0.01:2, x -> s([x,0,0])[1], label = "denoising alpha = $(round(alpha, digits=7)), t = $t, error = $model_l2_error");
+    end
+    push!(plots, plt)
+end
+plot(plots..., layout = (2, 2), size = (1800, 1300), title = "score NN")
+
+# sweep over epochs
+reset_timer!()
+print("epoch sweep")
+epoch_nums = [10, 25, 50, 100]
+for epochs in epoch_nums
+    sbtm_landau(xs, ts; s = s_, verbose = 2, saveat = saveat, record_s_values = true, epochs = epochs)
+end
+print_timer()
+
+gr()
+plots = []
+for t in [0.0, 0.01, 0.25, 0.5]
+    plt = plot()
+    plot!(plt,-2:0.01:2, x -> score(z -> true_pdf(z, K(t)), [x,0,0])[1], label = "true score at t = $t")
+    for epochs in epoch_nums
+        s = JLD2.load("models/landau_model_t_$(t)_n_$(n)_lr_$(10^-4)_α_$(0.4)_epochs_$(epochs)_layers_$(4).jld2", "s")
+        plot!(plt,-2:0.01:2, x -> s([x,0,0])[1], label = "epochs = $epochs, t = $t");
+    end
+    push!(plots, plt)
+end
+plot(plots..., layout = (2, 2), size = (1800, 1300), title = "score NN")
+
+
+
+# evluating the denoising trick 
+using Zygote, Flux, JLD2, LinearAlgebra, OneHotArrays, Plots
+function divergence(f, v)
+    _, ∂f = pullback(f, v)
+    sum(eachindex(v)) do i
+        ∂fᵢ = ∂f(onehot(i, eachindex(v)))
+        sum(x -> x[i], ∂fᵢ)
+    end
+end
+function denoise(s, x :: AbstractVector{T}, α, n) where T
+    ζs = randn(T, length(x), n)
+    sh = s(x .+ α .* ζs)
+    sl = s(x .- α .* ζs)
+    denoise_vals = [(sh_val ⋅ ζ - sl_val ⋅ ζ)/(2α) for (sh_val, sl_val, ζ) in zip(eachcol(sh), eachcol(sl), eachcol(ζs))]
+end
+rec_epsilon(n, d = 3) = 2 * kde_bandwidth(n, d)^2
+kde_bandwidth(n, d = 3) = n^(-1/(d+4)) / √2
+num_particles(xs :: AbstractArray{T, 1}) where T = size(xs, 1)
+mol(ε, x) = exp(-sum(abs2, x)/ε)/sqrt((π*ε)^length(x)) 
+Mol(ε, x, xs :: AbstractVector) = sum( mol(ε, x - x_q) for x_q in xs )
+reconstruct_pdf(ε, x, u :: AbstractVector) = Mol(ε, x, u)/length(u)
+reconstruct_pdf(x, u) = reconstruct_pdf(rec_epsilon(num_particles(u)), x, u)
+
+s = load("models/landau_model_n_4000_start_6.jld2", "s")
+N = 10^4
+alphas = Float32[0.1, 0.3, 0.5, 1.]
+plotting_colors = [:red, :blue, :green, :orange]
+gr()
+
+plots = []
+for x in [Float32[r,0,0] for r in [0., 0.5, 1, 1.5, 2, 2.5]]
+    true_div = divergence(s, x)
+    plt = plot(title = "denoising trick at x = $(x[1])", size = (1600, 1200), xlabel = "position x", ylabel = "pdf of s(x + αζ)⋅ζ/α)");
+    for (i,alpha) in enumerate(alphas)
+        vals = denoise(s, x, alpha, N)
+        μ = sum(vals)/N
+        bias = μ - true_div
+        var = sum(abs2, vals .- μ) / (N-1)
+        expected_mse = bias^2 + var
+        @show alpha, μ, bias, var, expected_mse
+        plot!(plt, true_div .+ (-10:0.1:10), x_ -> reconstruct_pdf(rec_epsilon(N)*3, x_, vals), label = "alpha = $alpha, bias^2 = $(round(bias^2,digits=1)), variance = $(round(var,digits=1)), E(MSE) = $(round(expected_mse,digits=1))", color = plotting_colors[i])
+        scatter!(plt, [clamp(μ, true_div-10, true_div+10)], [0.05], color = plotting_colors[i], markersize = 10, label = "mean, alpha = $alpha")
+    end
+    scatter!(plt, [true_div], [0], label = "true divergence", markersize = 10)
+    push!(plots, plt)
+end
+plot(plots..., layout = (3, 2))
+
+############## distribution of |x| at t = 6 for landau ############
+using HCubature
+a(K) = (5K-3)/(2K)
+b(K) = (1-K)/(2K^2)
+K(t) = 1 - exp(-(t+6)/6)
+true_pdf(x, K) = (a(K) + b(K)*sum(abs2, x)) * (2π*K)^(-3/2) * exp(-sum(abs2, x)/(2K))
+cdf_norm(r) = hcubature(x -> (norm(x) < r ? 1 : 0)*true_pdf(x, K(0f0)), [-r,-r,-r], [r,r,r], rtol = 0.005, initdiv = 10)[1]
+dr = 0.01
+r_vals = 0.1:dr:3
+cdf_vals = cdf_norm.(r_vals)
+pdf_vals = [cdf_vals[i+1] - cdf_vals[i-1] for i in 2:length(cdf_vals)-1] ./ (2dr)
+sum(pdf_vals) * dr
+plot(r_vals[2:end-1], pdf_vals)

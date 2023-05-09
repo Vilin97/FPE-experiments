@@ -11,7 +11,7 @@ function initialize_s(ρ₀, xs, size_hidden, num_hidden; activation = softsign,
     d_bar = size(xs,1)
     s = Chain(
         Dense(d_bar => size_hidden, activation),
-        repeat([Dense(size_hidden, size_hidden), activation], num_hidden-1)...,
+        repeat([Dense(size_hidden, size_hidden, activation)], num_hidden-1)...,
         Dense(size_hidden => d_bar)
         )
     @timeit "NN init" initialize_s!(s, ρ₀, xs; verbose = verbose, kwargs...)
@@ -52,9 +52,10 @@ function initialize_s!(s, ρ₀, xs :: AbstractArray{T}; optimiser = Adam(10^-3)
     final_loss = l2_error_normalized(s, xs, ys)
     verbose > 0 && println("Initialized NN in $iteration iterations. Loss = $final_loss.")
     # iteration, losses
+    nothing
 end
 
-function loss(s, xs :: AbstractArray{T}, α = T(0.1)) where T
+function loss(s, xs :: AbstractArray{T}, α) where T
     ζ = randn(T, size(xs))
     denoise_val = ( s(xs .+ α .* ζ) ⋅ ζ - s(xs .- α .* ζ) ⋅ ζ ) / α
     (norm(s(xs))^2 + denoise_val)/num_particles(xs)
