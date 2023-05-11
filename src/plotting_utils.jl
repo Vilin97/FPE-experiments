@@ -143,27 +143,3 @@ function covariance_diff_trace_plot(ns, covs, true_cov, labels, colors, t, d, ex
     end
     plt
 end
-
-"plot the slice pdfs at time t"
-function pdf_plot(solutions, labels, ε, time_index, saveat = SAVEAT; plot_ci = false, num_runs=1, ci_alpha = 0.05)
-    d = 3
-    t = saveat[time_index]
-    n = num_particles(solutions[1][1]) ÷ num_runs
-    plt = plot(title = "t = $(round(START+t, digits = 2)), n = $n", xlabel = "x", ylabel = "pdf(x)", ylim = (0, 0.05))
-    pdf_range = range(-6, 6, length=500)
-    label_ = "true"
-    plot!(plt, pdf_range, x->true_slice(x, K(t)), label = label_)
-    for (solution, label) in zip(solutions, labels)
-        u = solution[time_index]
-        lower, upper = kde_cis(pdf_range, x -> reconstruct_pdf(ε, [x,0,0], u), x->true_slice(x, K(t)), n*num_runs, ε, d; α = ci_alpha)
-        kde = [reconstruct_pdf(ε, [x,0,0], u) for x in pdf_range]
-        ribbon = nothing
-        label = "$label, ε = $(round(ε, digits = 4))"
-        if plot_ci 
-            ribbon = (kde .- lower, upper .- kde)
-            label = "$label, ε = $(round(ε, digits = 4)), $(1-ci_alpha) CI"
-        end
-        plot!(plt, pdf_range, kde, label = label, ribbon = ribbon, fillalpha = 0.3)
-    end
-    plt
-end

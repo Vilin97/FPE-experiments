@@ -77,7 +77,7 @@ function sbtm(xs, ts, b, D; ρ₀ = nothing, s = nothing, size_hidden=100, num_h
     solution
 end
 
-function sbtm_solve(xs, ts :: AbstractVector{T}, b, D, s; epochs = 25, record_s_values = false, record_losses = false, verbose = 0, optimiser = Adam(10^-4), kwargs...) where T
+function sbtm_solve(xs, ts :: AbstractVector{T}, b, D, s; epochs = 25, record_s_values = false, record_losses = false, verbose = 0, optimiser = Adam(10^-4), denoising_alpha = T(0.4), kwargs...) where T
     tspan = (zero(T), ts[end])
     initial = xs
     s_values = zeros(T, size(xs)..., length(ts))
@@ -91,7 +91,7 @@ function sbtm_solve(xs, ts :: AbstractVector{T}, b, D, s; epochs = 25, record_s_
         xs = integrator.u
         state = Flux.setup(optimiser, s)
         @timeit "NN train" for epoch in 1:epochs
-            loss_value, grads = withgradient(s -> loss(s, xs), s)
+            loss_value, grads = withgradient(s -> loss(s, xs, denoising_alpha), s)
             Flux.update!(state, s, grads[1])
             record_losses && (losses[epoch, k] = loss_value)
             verbose > 2 && println("Epoch $epoch, loss = $loss_value.")

@@ -230,16 +230,30 @@ sum(abs2, xs .- x, dims = 1)
 # timing
 # CUDA.@time ...
 
-# L2 error
+# L2 error. HCubature does not work on a GPU
 using HCubature, CUDA
-u = CUDA.rand(3, 10)
-d = get_d(u)
-ε = rec_epsilon(num_particles(u))
-diff(x) = (reconstruct_pdf(ε, x, u) - true_pdf(x, 1f0))^p 
-diff_slice = slice(diff, d, k)
-integrand, accuracy = hcubature(diff_slice, fill(-xlim, k), fill(xlim, k), rtol = rtol)
-if accuracy > rtol*abs(integrand)
-    error("accuracy = $accuracy < $integrand*$rtol = Lp integrand*rtol")
+d = 3
+ε = 1f-1
+a(K) = (5K-3)/(2K)
+b(K) = (1-K)/(2K^2)
+K(t) = 1 - exp(-(t+6)/6)
+true_pdf(x, K=K(0f0)) = (a(K) + b(K)*sum(abs2, x)) * sqrt(1/(2*(π*K))^-3) * exp(-sum(abs2, x)/(2K))
+
+function reconstruct_pdf(ε, x, xs)
+    n = size(xs, 2)
+    exp_sum = -sum(abs2, xs .- x, dims = 1) ./ ε .|> exp |> sum
+    exp_sum / sqrt((π*ε)^length(x)) / n
 end
-verbose > 0 && (println("relative integration error ~ $(accuracy/abs(integrand))"))
-max(eps(), integrand)^(1/p)
+
+CUDA.allowscalar(false)
+u = CUDA.rand(3, 10^5)
+x = CUDA.ones(3)
+xc = Array(x)
+uc = Array(u)
+CUDA.@time reconstruct_pdf(1f-1, x, u) # 391 CPU allocations
+CUDA.@time reconstruct_pdf(1f-1, xc, uc) # 23 CPU allocations
+
+CUDA.@time integrand, accuracy = hcubature(x -> reconstruct_pdf(1f-1, x, u), CuArray(fill(-3, 3)), CuArray(fill(3, 3)), maxevals = 10^5)
+CUDA.@time integrand, accuracy = hcubature(x -> reconstruct_pdf(1f-1, x, uc), (fill(-3, 3)), (fill(3, 3)), maxevals = 10^4)
+
+

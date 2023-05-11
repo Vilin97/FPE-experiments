@@ -95,7 +95,7 @@ function Lp_error_experiment(d=3; p=2, k=2, verbose = 0, kwargs...)
     Lp_plots = plot(plots..., layout = (length(plots), 1), size = (1500, 1000))
 end
 
-L2_error_plot = Lp_error_experiment(;verbose = 1, xlim = 3, rtol = 2 * 0.02, k = 2)
+L2_error_plot = Lp_error_experiment(;verbose = 1, xlim = 2, rtol = 2 * 0.02, k = 2)
 savefig(L2_error_plot, "plots/landau 3d L2 error combined")
 
 ############ KL divergence plots ############
@@ -126,12 +126,14 @@ savefig(kl_plot, "plots/landau 3d KL divergence")
 
 ############ score plots ############
 
-function score_experiment()
+function score_error_experiment()
     ts = SAVEAT
     plt = plot(title = "landau NN R^2, $(NUMRUNS) runs, start $START", xlabel = "time", ylabel = "R^2 score", size = (1000, 600))
     for n in ns
         solution = JLD2.load("landau_experiment/sbtm_n_$(n)_runs_$(NUMRUNS)_start_$START.jld2", "solution")
+        solution = [solution[1], solution[3], solution[4]] # remove t = 0.01 solution
         combined_models = JLD2.load("landau_experiment/sbtm_n_$(n)_runs_$(NUMRUNS)_start_$START.jld2", "models")
+        combined_models = combined_models[[1,3,4], :] # remove t = 0.01 model
         errors = zeros(length(ts))
         s_values = zeros(Float32, get_d(solution[1]), n, NUMRUNS)
         @views for (k,t) in enumerate(ts)
@@ -148,9 +150,34 @@ function score_experiment()
     end
     plt
 end
-
-score_plot = score_experiment()
+score_error_plot = score_error_experiment()
 savefig(score_plot, "plots/landau 3d NN R^2, start $START")
+
+function score_slice_experiment(ns_indices = [length(ns)-1, length(ns)], time_indices = [1,2,3])
+    plots = Matrix{Plots.Plot}(undef, length(ns_indices), length(time_indices))
+    for (i,n_index) in enumerate(ns_indices)
+        n = ns[n_index]
+        combined_models = JLD2.load("landau_experiment/sbtm_n_$(n)_runs_$(NUMRUNS)_start_$START.jld2", "models")
+        combined_models = combined_models[[1,3,4], :] # remove t = 0.01 model
+        solution = JLD2.load("landau_experiment/sbtm_n_$(n)_runs_$(NUMRUNS)_start_$START.jld2", "solution")
+        solution = solution[[1,3,4]] # remove t = 0.01 solution
+        for (j, time_index) in enumerate(time_indices)
+            @show n, time_index
+            t = SAVEAT[time_index]
+            plt = plot(title = "score slice at t = $(t), n = $n", xlabel = "x", ylabel = "score");
+            plot!(plt, -4:0.01:4, x -> score(y -> true_pdf(y, K(t)), [x,0.,0.])[1], label="true");
+            scatter!(plt, solution[time_index][1,1:n ÷ 5], randn(n ÷ 5)./10, label="particles", markersize = 1, color = :black)
+            for run in 1:NUMRUNS
+                s = combined_models[time_index, run]
+                plot!(plt, -4:0.01:4, x -> s(Float32[x,0.,0.])[1], label="run $run");
+            end
+            plots[i,j] = plt
+        end
+    end
+    plt = plot(plots..., layout = (length(time_indices), length(ns_indices)), size = (1800, 1000))
+end
+score_slice_plot = score_slice_experiment()
+savefig(score_slice_plot, "plots/landau 3d score slice, start $START")
 
 ############ moments plots ############
 empirical_first_moment(xs :: AbstractArray{T, 2}) where T = vec(mean(xs, dims = 2))

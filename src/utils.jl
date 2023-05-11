@@ -130,13 +130,13 @@ function Lp_error_marginal(u_ :: AbstractArray, pdf; ε = 0.1, p = 2, verbose = 
 end
 
 function Lp_error_marginal(solution :: ODESolution, t_index, pdf; kwargs...)
-    Lp_error(solution[t_index], pdf; kwargs...)
+    Lp_error_marginal(solution[t_index], pdf; kwargs...)
 end
 
 "true_solution(t) :: MvNormal"
 function Lp_error_marginal(solution :: ODESolution, true_solution, t; k = 1, kwargs...)
     true_marginal = marginal(true_solution(t), k)
-    Lp_error(solution(t), x -> pdf(true_marginal, x); k=k, kwargs...)
+    Lp_error_marginal(solution(t), x -> pdf(true_marginal, x); k=k, kwargs...)
 end
 
 function moving_trap(N, num_samples, num_timestamps)

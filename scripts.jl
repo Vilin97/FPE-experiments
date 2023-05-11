@@ -896,10 +896,11 @@ end
 plot(plots..., layout = (3, 2))
 
 ############## distribution of |x| at t = 6 for landau ############
-using HCubature
+using HCubature, LinearAlgebra, Plots
 a(K) = (5K-3)/(2K)
 b(K) = (1-K)/(2K^2)
-K(t) = 1 - exp(-(t+6)/6)
+start_t = 6.5
+K(t) = 1 - exp(-(t+start_t)/6)
 true_pdf(x, K) = (a(K) + b(K)*sum(abs2, x)) * (2π*K)^(-3/2) * exp(-sum(abs2, x)/(2K))
 cdf_norm(r) = hcubature(x -> (norm(x) < r ? 1 : 0)*true_pdf(x, K(0f0)), [-r,-r,-r], [r,r,r], rtol = 0.005, initdiv = 10)[1]
 dr = 0.01
@@ -907,4 +908,4 @@ r_vals = 0.1:dr:3
 cdf_vals = cdf_norm.(r_vals)
 pdf_vals = [cdf_vals[i+1] - cdf_vals[i-1] for i in 2:length(cdf_vals)-1] ./ (2dr)
 sum(pdf_vals) * dr
-plot(r_vals[2:end-1], pdf_vals)
+plot(r_vals[2:end-1], pdf_vals, title = "pdf of |x| at t = $start_t", xlabel = "|x|", ylabel = "pdf", size = (1600, 1000))
