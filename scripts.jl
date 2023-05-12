@@ -18,7 +18,7 @@ A6(z) = eltype(z)(1/24) .* (normsq(z) .* I3 .- z.*z')
 
 
 # benchmarking normsq
-using BenchmarkTools
+using BenchmarkTools, LoopVectorization, LinearAlgebra
 function normsq(z)
     res = zero(eltype(z))
     @fastmath for zi in z
@@ -35,17 +35,21 @@ function normsq_lv(z)
     res
 end
 
+normsq_sum(z) = sum(i -> z[i]^2, eachindex(z))
+
 z = rand(3)
 @btime norm($z)^2 # 16.733 ns
 @btime ($z)' * $z # 17.134 ns
+@btime normsq_sum($z) # 10 ns
+@btime normsq_lv($z) # 7.800 ns
 @btime sum(x -> x^2, $z) # 4.400 ns
 @btime sum(abs2, $z) # 4.400 ns
 @btime normsq($z) # 3.600 ns
-@btime normsq_lv($z) # 7.800 ns
 
 z = rand(100)
 @btime norm($z)^2 # 43.794 ns
 @btime ($z)' * $z # 30.050 ns
+@btime normsq_sum($z) # 26 ns
 @btime sum(x -> x^2, $z) # 14.314 ns
 @btime sum(abs2, $z) # 14.314 ns
 @btime normsq($z) # 10.200 ns
@@ -909,3 +913,16 @@ cdf_vals = cdf_norm.(r_vals)
 pdf_vals = [cdf_vals[i+1] - cdf_vals[i-1] for i in 2:length(cdf_vals)-1] ./ (2dr)
 sum(pdf_vals) * dr
 plot(r_vals[2:end-1], pdf_vals, title = "pdf of |x| at t = $start_t", xlabel = "|x|", ylabel = "pdf", size = (1600, 1000))
+
+# gaussian soap bubble
+using Plots
+ds = [1, 3, 10, 100, 10_000]
+N = 10^4
+plots = []
+for d in ds
+    data = randn(d, N)
+    norms = sum(abs2, data, dims = 1) |> vec .|> sqrt
+    plt = histogram(norms, title = "d = $d", xlabel = "|x|", ylabel = "histogram count")
+    push!(plots, plt)
+end
+plot(plots..., layout = (3, 2), size = (1600, 1000))

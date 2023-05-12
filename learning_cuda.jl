@@ -257,3 +257,124 @@ CUDA.@time integrand, accuracy = hcubature(x -> reconstruct_pdf(1f-1, x, u), CuA
 CUDA.@time integrand, accuracy = hcubature(x -> reconstruct_pdf(1f-1, x, uc), (fill(-3, 3)), (fill(3, 3)), maxevals = 10^4)
 
 
+# NN training
+using CUDA
+CUDA.functional()
+Flux.GPU_BACKEND
+
+W = cu(rand(2, 5)) # a 2×5 CuArray
+b = cu(rand(2))
+
+predict(x) = W*x .+ b
+loss(x, y) = sum((predict(x) .- y).^2)
+
+x, y = cu(rand(5)), cu(rand(2)) # Dummy data
+loss(x, y) # ~ 3
+
+
+d = Dense(10 => 5, σ)
+d = fmap(cu, d)
+d.weight # CuArray
+d(cu(rand(10))) # CuArray output
+
+m = Chain(Dense(10 => 5, σ), Dense(5 => 2), softmax)
+m = fmap(cu, m)
+m(cu(rand(10)))
+
+
+using Flux, CUDA
+m = Dense(10, 5) |> gpu
+Dense(10 => 5)      # 55 parameters
+
+x = rand(10) |> gpu
+m(x)
+
+test_data = cu(rand(3, 160_000))
+
+
+
+l2_error_normalized(s, xs, ρ) = l2_error_normalized(s, xs, score(ρ, xs))
+l2_error_normalized(s, xs, ys :: AbstractArray) = sum(abs2, s(xs) .- ys) / sum(abs2, ys)
+T = Float32
+optimiser = Adam(10^-3); loss_tolerance = T(10^-4); verbose = 0; max_iterations = 10^3; record_losses = false; batchsize=min(2^8, num_particles(xs))
+ρ₀ = MvNormal(I(3))
+iteration = 1
+
+using TimerOutputs
+CUDA.allowscalar(false)
+n = 2^17
+
+function my_train(s, xs, ys, max_iterations, data_loader, loss_tolerance, state)
+    iteration = 1
+    while iteration < max_iterations
+        for (x, y) in data_loader
+            @timeit "compute grad" loss_value, grads = withgradient(s -> l2_error_normalized(s, x, y), s)
+            current_loss = loss_value
+            if iteration >= max_iterations
+                break
+            end
+            iteration += 1
+            @timeit "update" Flux.update!(state, s, grads[1])
+        end
+    end
+    
+end
+
+reset_timer!()
+# cpu
+seed!(1234)
+s = Chain(Dense(3 => 100, softsign), Dense(100 => 3))
+xs = rand(T, 3, n)
+ys = score(ρ₀, xs)
+data_loader = DataLoader((data=xs, label=ys), batchsize=batchsize);
+state = Flux.setup(optimiser, s)
+sum(abs2, s(xs) .- ys)
+@timeit "cpu" my_train(s, xs, ys, max_iterations, data_loader, loss_tolerance, state)
+sum(abs2, s(xs) .- ys)
+
+# gpu
+seed!(1234)
+s = Chain(Dense(3 => 100, softsign), Dense(100 => 3)) |> gpu
+xs = rand(T, 3, n)
+ys = score(ρ₀, xs)
+data_loader = DataLoader((data=xs, label=ys), batchsize=batchsize) |> gpu;
+state = Flux.setup(optimiser, s)
+sum(abs2, s(xs |> gpu) .- (ys |> gpu))
+@timeit "gpu" my_train(s, xs, ys, max_iterations, data_loader, loss_tolerance, state)
+sum(abs2, s(xs |> gpu) .- (ys |> gpu))
+
+print_timer()
+
+using BenchmarkTools, Flux, CUDA
+using Zygote: withgradient
+optimiser = Adam(10^-3); 
+
+#cpu
+n = 2^8
+s = Chain(Dense(3 => 100, softsign), Dense(100 => 100, softsign), Dense(100 => 3))
+state = Flux.setup(optimiser, s)
+x = rand(Float32, 3, n)
+y = rand(Float32, 3, n)
+@btime _, grads = withgradient(s -> sum(abs2, s(x) .- y), $s) # 1.2 ms
+
+#gpu
+s = Chain(Dense(3 => 100, softsign), Dense(100 => 100, softsign), Dense(100 => 3)) |> gpu
+state = Flux.setup(optimiser, s)
+x = rand(3, n) |> gpu
+y = rand(3, n) |> gpu
+@btime CUDA.@sync _, grads = withgradient(s -> sum(abs2, s(x) .- y), s) # 986 μs
+
+#simple chains
+using SimpleChains
+x = rand(Float32, 3, n)
+y = rand(Float32, 3, n)
+s = SimpleChain(
+  static(3),
+  TurboDense{true}(softsign, 100),
+  TurboDense{true}(softsign, 100),
+  TurboDense{true}(softsign, 3),
+  SquaredLoss(y)
+);
+p = SimpleChains.init_params(s)
+g = similar(p)
+@btime valgrad!($g, $s, $x, $p) # 488 μs
