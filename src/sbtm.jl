@@ -27,7 +27,6 @@ function initialize_s!(s, ρ₀, xs :: AbstractArray{T}; optimiser = Adam(10^-3)
     data_loader = DataLoader((data=xs, label=ys), batchsize=batchsize);
     state = Flux.setup(optimiser, s)
     current_loss = l2_error_normalized(s, xs, ys)
-    # losses = ones(max_iterations)
     iteration = 1
     epoch = 1
     while iteration < max_iterations
@@ -37,7 +36,6 @@ function initialize_s!(s, ρ₀, xs :: AbstractArray{T}; optimiser = Adam(10^-3)
             if iteration >= max_iterations
                 break
             end
-            # record_losses && (losses[iteration] = current_loss)
             verbose > 2 && iteration % 1000 == 0 && println("Iteration $iteration, batch loss $current_loss")
             iteration += 1
             Flux.update!(state, s, grads[1])

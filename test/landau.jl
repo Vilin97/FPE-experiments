@@ -53,19 +53,20 @@ function landau_test()
     p = 2
 
     xs, ts, f = landau(n, 5.5; time_interval = time_interval)
-    initial_error = Lp_error(xs, x -> f(x, K(0)); k=3, verbose = 1)
+    initial_error = Lp_error(xs, x -> f(x, K(0)); k=3, verbose = 0)
     println("L$p error for initial sample is $initial_error.")
     @test initial_error < tol
 
-    @timeit "blob" blob_solution = blob_landau(xs, ts; ε = ε, saveat = ts[[1, end]], verbose = 1)
-    error = Lp_error(blob_solution[end], x -> f(x, K(time_interval)); k=3, verbose = 1)
+    @timeit "blob" blob_solution = blob_landau(xs, ts; ε = ε, saveat = ts[end], verbose = 0)
+    error = Lp_error(blob_solution[end], x -> f(x, K(time_interval)); k=3, verbose = 0)
     println("L$p error for blob is $error.")
     @test error < tol
 
-    @timeit "sbtm" sbtm_solution, _, _ = sbtm_landau(Float32.(xs), ts; ρ₀ = x->f(x, K(0)), saveat = ts[[1, end]], verbose = 1, loss_tolerance = 1e-3)
-    error = Lp_error(sbtm_solution[end], x -> f(x, K(time_interval)); k=3, verbose = 1)
+    @timeit "sbtm" sbtm_solution, _, _ = sbtm_landau(Float32.(xs), ts; ρ₀ = x->f(x, K(0)), saveat = ts[end], verbose = 0, loss_tolerance = 1e-3)
+    error = Lp_error(sbtm_solution[end], x -> f(x, K(time_interval)); k=3, verbose = 0)
     println("L$p error for sbtm is $error.")
     @test error < tol
+    @test eltype(sbtm_solution[end]) == Float32
 end
 
 landau_test()

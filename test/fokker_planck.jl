@@ -49,14 +49,18 @@ function diffusion_test()
         xs = reshape(solution[end], d, n)
         emp_mean = empirical_first_moment(xs)
         emp_cov = empirical_covariance(xs)
-        cov_diff = cov(f(ts[end])) - emp_cov
+        cov_diff = cov(ρ(ts[end])) - emp_cov
         println("$(label) mean error = $(norm(emp_mean))")
         println("$(label) cov norm error = $(norm(cov_diff))")
         println("$(label) cov trace error = $(tr(cov_diff))")
         @test norm(emp_mean) < mean_tol
         @test norm(cov_diff) < cov_tol
+
+        if label == "sbtm"
+            @test eltype(solution[end]) == Float32
+        end
     end
 end
 
-@timeit "no-diffusion test" @testset "no-diffusion test" no_diffusion_test()
-@timeit "diffusion test" @testset "diffusion test" diffusion_test()
+no_diffusion_test()
+diffusion_test()
