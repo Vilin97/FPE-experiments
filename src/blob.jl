@@ -1,17 +1,8 @@
-include("utils.jl")
+using LoopVectorization
 
-using DifferentialEquations, LoopVectorization, Zygote
-using Random: seed!
-
-function blob(xs, ts, b, D; ε = 1/π, kwargs...)
-    T = typeof(ε)
-    solution = blob_solve(T.(xs), T.(ts), b, D, ε)
-    solution
-end
-
-function blob_f!(dxs, xs_, pars, t)
-    (ε, n, d, diff_norm2s, mol_sum, term1, term2, mols, b, D, d_bar) = pars
-    xs = reshape(xs_, d, n)
+function blob_score!(score_array, xs, pars)
+    (ε, diff_norm2s, mol_sum, term1, term2, mols) = pars
+    d, n = size(xs)
     mol_sum .= zero(ε)
     diff_norm2s .= zero(ε)
     term1 .= zero(ε)
@@ -29,21 +20,5 @@ function blob_f!(dxs, xs_, pars, t)
         term1[k, p] += fac * diff_k / mol_sum[p]
         term2[k, p] += fac * diff_k / mol_sum[q]
     end
-    dxs .= reshape(-D(xs,t) .* term1 .+ term2, d_bar, :, n) .+ b(xs_, t)
-end
-
-function blob_solve(xs, ts :: AbstractVector{T}, b, D, ε :: T) where T
-    tspan = (ts[1], ts[end])
-    d_bar, N, n = size(xs)
-    d = d_bar * N
-    initial = xs
-    diff_norm2s = zeros(T, n, n)
-    mol_sum = zeros(T, n)
-    term1 = zeros(T, d, n)
-    term2 = zeros(T, d, n)
-    mols = zeros(T, n, n)
-    pars = (ε, n, d, diff_norm2s, mol_sum, term1, term2, mols, b, D, d_bar)
-    
-    ode_problem = ODEProblem(blob_f!, initial, tspan, pars)
-    solution = solve(ode_problem, saveat = ts, alg = Euler(), tstops = ts)
+    score_array .= term1 .+ term2
 end

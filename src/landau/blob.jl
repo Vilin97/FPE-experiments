@@ -1,4 +1,6 @@
 using DifferentialEquations, LoopVectorization, TimerOutputs
+include("../utils.jl")
+include("../blob.jl")
 
 function blob_landau(xs, ts; ε=0.025, kwargs...)
     T = typeof(ε)
@@ -27,7 +29,6 @@ end
 function landau_f_blob!(dxs, xs, pars, t)
     score_values, score_params = pars
     n = num_particles(xs)
-    dxs .= zero(eltype(xs))
     @timeit "compute score" blob_score!(score_values, xs, score_params)
     @timeit "propagate particles" @turbo for p = 1:n
         Base.Cartesian.@nexprs 3 i -> dx_i = zero(eltype(dxs))
@@ -50,27 +51,4 @@ function landau_f_blob!(dxs, xs, pars, t)
     end
     dxs ./= 24*n
     nothing
-end
-
-function blob_score!(score_array, xs, pars)
-    (ε, diff_norm2s, mol_sum, term1, term2, mols) = pars
-    d, n = size(xs)
-    mol_sum .= zero(ε)
-    diff_norm2s .= zero(ε)
-    term1 .= zero(ε)
-    term2 .= zero(ε)
-    @tturbo for p in 1:n, q in 1:n, k in 1:d
-        diff_norm2s[p, q] += (xs[k, p] - xs[k, q])^2
-    end
-    @tturbo for p in 1:n, q in 1:n
-        mols[p, q] = exp(-diff_norm2s[p, q]/ε)/sqrt((π*ε)^d)
-        mol_sum[p] += mols[p, q]
-    end
-    @tturbo for p in 1:n, q in 1:n, k in 1:d
-        fac = -2. / ε * mols[p, q]
-        diff_k = xs[k, p] - xs[k, q]
-        term1[k, p] += fac * diff_k / mol_sum[p]
-        term2[k, p] += fac * diff_k / mol_sum[q]
-    end
-    score_array .= term1 .+ term2
 end

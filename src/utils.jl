@@ -1,27 +1,7 @@
 using Statistics, LinearAlgebra, Distributions, HCubature, Zygote, DifferentialEquations
 import Distributions.gradlogpdf
 
-"1-α confidence interval"
-function kde_ci(kde_approx_value, true_pdf_value, n, ε, d; α = 0.05, kernel_l2_squared = (4π)^(-d/2))
-    h = (ε/2)^(1/2) # ε = 2 * h^2
-    amplitude = sqrt(true_pdf_value * kernel_l2_squared / (n*h^d))
-    pm = amplitude * quantile(Normal(0,1), 1-α/2)
-    (kde_approx_value - pm, kde_approx_value + pm)
-end
-
-function kde_cis(kde_approx_values :: AbstractArray, true_pdf_values :: AbstractArray, n, ε, d; kwargs...)
-    cis = [kde_ci(kde_approx_values[i], true_pdf_values[i], n, ε, d; kwargs...) for i in eachindex(kde_approx_values)]
-    lower = [ci[1] for ci in cis]
-    upper = [ci[2] for ci in cis]
-    lower, upper
-end
-
-function kde_cis(xs, kde_fun :: Function, true_pdf :: Function, n, ε, d; kwargs...)
-    kde_approx_values = kde_fun.(xs)
-    true_pdf_values = true_pdf.(xs)
-    kde_cis(kde_approx_values, true_pdf_values, n, ε, d; kwargs...)
-end
-
+############ fast linear algebra ############
 "sum of squares of the elements of z"
 function normsq(z)
     res = zero(eltype(z))
@@ -48,20 +28,30 @@ function fastdot(z, v)
     res
 end
 
-num_particles(xs :: AbstractArray{T, 3}) where T = size(xs, 3)
-num_particles(xs :: AbstractArray{T, 2}) where T = size(xs, 2)
-num_particles(xs :: AbstractArray{T, 1}) where T = size(xs, 1)
-get_d(xs :: AbstractArray{T, 3}) where T = size(xs, 1)*size(xs, 2)
-get_d(xs :: AbstractArray{T, 2}) where T = size(xs, 1)
-get_d(xs :: AbstractArray{T, 1}) where T = 1
+############ analysis ############
+### KDE ###
+"1-α confidence interval"
+function kde_ci(kde_approx_value, true_pdf_value, n, ε, d; α = 0.05, kernel_l2_squared = (4π)^(-d/2))
+    h = (ε/2)^(1/2) # ε = 2 * h^2
+    amplitude = sqrt(true_pdf_value * kernel_l2_squared / (n*h^d))
+    pm = amplitude * quantile(Normal(0,1), 1-α/2)
+    (kde_approx_value - pm, kde_approx_value + pm)
+end
 
-"∇log ρ(x) for each column x of xs."
-# score(ρ, xs) = mapslices(x -> gradlogpdf(ρ, x), xs, dims=1) # this is slow
-score(ρ, xs :: AbstractArray{T,1}) where T = gradlogpdf(ρ, xs)
-score(ρ, xs :: AbstractArray{T,2}) where T = reshape(hcat([gradlogpdf(ρ, @view xs[:,i]) for i in axes(xs, 2)]...), size(xs))
-score(ρ, xs :: AbstractArray{T,3}) where T = reshape(hcat([gradlogpdf(ρ, @view xs[:,i,j]) for i in axes(xs, 2), j in axes(xs, 3)]...), size(xs))
-gradlogpdf(f :: Function, x) = gradient(log ∘ f, x)[1]
+function kde_cis(kde_approx_values :: AbstractArray, true_pdf_values :: AbstractArray, n, ε, d; kwargs...)
+    cis = [kde_ci(kde_approx_values[i], true_pdf_values[i], n, ε, d; kwargs...) for i in eachindex(kde_approx_values)]
+    lower = [ci[1] for ci in cis]
+    upper = [ci[2] for ci in cis]
+    lower, upper
+end
 
+function kde_cis(xs, kde_fun :: Function, true_pdf :: Function, n, ε, d; kwargs...)
+    kde_approx_values = kde_fun.(xs)
+    true_pdf_values = true_pdf.(xs)
+    kde_cis(kde_approx_values, true_pdf_values, n, ε, d; kwargs...)
+end
+
+### pdf reconstruction ###
 "gaussian mollifier pdf(MvNormal(ε/2*I(length(x))), x)"
 mol(ε, x) = exp(-sum(abs2, x)/ε)/sqrt((π*ε)^length(x)) # = pdf(MvNormal(ε/2*I(length(x))), x)
 grad_mol(ε, x) = -2/ε*mol(ε, x) .* x
@@ -85,6 +75,13 @@ marginal(dist :: MvNormal, k=1) = MvNormal(mean(dist)[1:k], cov(dist)[1:k, 1:k])
 
 slice(f, d, k) = x -> f([x..., zeros(d-k)...])
 
+### moments ###
+empirical_first_moment(xs :: AbstractArray{T, 2}) where T = vec(mean(xs, dims = 2))
+empirical_second_moment(xs :: AbstractArray{T, 2}) where T = xs * xs' / (num_particles(xs) - 1)
+empirical_covariance(xs :: AbstractArray{T, 2}) where T = empirical_second_moment(xs .- empirical_first_moment(xs))
+
+### kl divergence ###
+# TODO: currently incorrect
 "1/n ∑ᵢ [log rec_pdf(xᵢ) - log true_pdf(xᵢ)]"
 function KL_divergence(u :: AbstractArray, true_pdf)
     n = num_particles(u)
@@ -92,6 +89,7 @@ function KL_divergence(u :: AbstractArray, true_pdf)
     sum(x -> log(Z/n/true_pdf(x)), eachcol(u))/n
 end
 
+### Lp error ###
 function Lp_error_slice(u :: AbstractArray, true_pdf; k = 2, p = 2, verbose = 0, xlim = 10, rtol = 0.1, kwargs...)
     d = get_d(u)
     ε = rec_epsilon(num_particles(u))
@@ -123,7 +121,7 @@ function Lp_error_marginal(u_ :: AbstractArray, pdf; ε = 0.1, p = 2, verbose = 
     d = get_d(u_)
     u = reshape(u_, d, n)[1:k, :]
     empirical_pdf(x) = reconstruct_pdf(ε, x, u)
-    diff(x) = (empirical_pdf(x) - pdf(x))^p 
+    diff(x) = (abs(empirical_pdf(x) - pdf(x)))^p 
     error, accuracy = hcubature(diff, fill(-xlim, k), fill(xlim, k), maxevals = max_evals, rtol = rtol)
     verbose > 0 && (println("L$p error integration accuracy = $accuracy"))
     max(eps(), error)^(1/p)
@@ -139,6 +137,22 @@ function Lp_error_marginal(solution :: ODESolution, true_solution, t; k = 1, kwa
     Lp_error_marginal(solution(t), x -> pdf(true_marginal, x); k=k, kwargs...)
 end
 
+############ misc ############
+num_particles(xs :: AbstractArray{T, 3}) where T = size(xs, 3)
+num_particles(xs :: AbstractArray{T, 2}) where T = size(xs, 2)
+num_particles(xs :: AbstractArray{T, 1}) where T = size(xs, 1)
+get_d(xs :: AbstractArray{T, 3}) where T = size(xs, 1)*size(xs, 2)
+get_d(xs :: AbstractArray{T, 2}) where T = size(xs, 1)
+get_d(xs :: AbstractArray{T, 1}) where T = 1
+
+"∇log ρ(x) for each column x of xs."
+# score(ρ, xs) = mapslices(x -> gradlogpdf(ρ, x), xs, dims=1) # this is slow
+score(ρ, xs :: AbstractArray{T,1}) where T = gradlogpdf(ρ, xs)
+score(ρ, xs :: AbstractArray{T,2}) where T = reshape(hcat([gradlogpdf(ρ, @view xs[:,i]) for i in axes(xs, 2)]...), size(xs))
+score(ρ, xs :: AbstractArray{T,3}) where T = reshape(hcat([gradlogpdf(ρ, @view xs[:,i,j]) for i in axes(xs, 2), j in axes(xs, 3)]...), size(xs))
+gradlogpdf(f :: Function, x) = gradient(log ∘ f, x)[1]
+
+############ FPE set-up ############
 function moving_trap(N, num_samples, num_timestamps)
     d = 2 # dimension of each particle
     a = Float32(2.) # trap amplitude

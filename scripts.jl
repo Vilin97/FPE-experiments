@@ -926,3 +926,89 @@ for d in ds
     push!(plots, plt)
 end
 plot(plots..., layout = (3, 2), size = (1600, 1000))
+
+
+# allocations in loss
+using Flux, BenchmarkTools, TimerOutputs, CUDA
+function normsq(z)
+    res = zero(eltype(z))
+    for zi in z
+        res += zi*zi
+    end
+    res
+end
+
+function loss1(s, xs :: AbstractArray{T}, α = T(0.4)) where T
+    ζ = randn(T, size(xs))
+    denoise_val = ( s(xs .+ α .* ζ) ⋅ ζ - s(xs .- α .* ζ) ⋅ ζ ) / α
+    (norm(s(xs))^2 + denoise_val)/num_particles(xs)
+end
+function loss2(s, xs :: AbstractArray{T}, α = T(0.4)) where T
+    @timeit "l1" ζ = randn(T, size(xs))
+    @timeit "l2" denoise_val = ( s(xs .+ α .* ζ) ⋅ ζ - s(xs .- α .* ζ) ⋅ ζ ) / α
+    @timeit "l3" (normsq(s(xs)) + denoise_val)/num_particles(xs)
+end
+function loss3(s, xs :: AbstractArray{T}, ζ, α = T(0.4)) where T
+    # ζ = CUDA.randn(T, size(xs))
+    denoise_val = ( s(xs .+ α .* ζ) ⋅ ζ - s(xs .- α .* ζ) ⋅ ζ ) / α
+    (norm(s(xs))^2 + denoise_val)/num_particles(xs)
+end
+
+function loss4(s_, xs_ :: AbstractArray{T}, ζ_, α = T(0.4)) where T
+    s = gpu(s_); xs = gpu(xs_);
+    ζ = gpu(ζ_)
+    # ζ = CUDA.randn(T, size(xs))
+    denoise_val = ( s(xs .+ α .* ζ) ⋅ ζ - s(xs .- α .* ζ) ⋅ ζ ) / α
+    (norm(s(xs))^2 + denoise_val)/num_particles(xs)
+end
+
+num_particles(xs :: AbstractArray{T, 2}) where T = size(xs, 2)
+xs = randn(Float32, 3, 80_000)
+s = Chain(Dense(3 => 100, softsign), Dense(100 => 100, softsign), Dense(100 => 3))
+ζ = randn(Float32, size(xs))
+ζ_gpu = gpu(ζ)
+@btime loss1($s, $xs, 1f-1)
+s_gpu = gpu(s); xs_gpu = gpu(xs);
+@btime CUDA.@sync loss3($s_gpu, $xs_gpu, $ζ_gpu, 1f-1)
+@btime CUDA.@sync loss4($s, $xs, $ζ, 1f-1)
+@btime withgradient(s -> loss1(s, $xs, 1f-1), $s)
+@btime CUDA.@sync withgradient(s -> loss3(s, $xs_gpu, $ζ_gpu, 1f-1), $s_gpu)
+@btime CUDA.@sync withgradient(s -> loss4(s, $xs, ζ, 1f-1), $s)
+
+reset_timer!()
+loss2(s, xs, 1f-1)
+print_timer()
+@btime $s($xs)
+
+# diffeq with gpu
+using OrdinaryDiffEq, CUDA, LinearAlgebra
+u0 = rand(Float32, 1000)
+A = randn(Float32, 1000, 1000)
+u0_gpu = gpu(u0)
+A_gpu = gpu(A)
+f(du, u, p, t) = mul!(du, A, u)
+f_gpu(du, u, p, t) = mul!(du, A_gpu, u)
+prob = ODEProblem(f, u0, (0.0f0, 1.0f0))
+prob_gpu = ODEProblem(f_gpu, u0_gpu, (0.0f0, 1.0f0))
+sol = solve(prob, Euler(), dt = 0.01)
+sol_gpu = solve(prob_gpu, Euler(), dt = 0.01)
+sol_gpu.u[1] - cu(sol.u[1])
+
+
+# plotting 2d solutions
+using Plots
+markersize = 5
+plot();
+scatter!(solution_sbtm[end][1,1,:], solution_sbtm[end][2,1,:], label = "sbtm, t = 10", markersize = markersize);
+scatter!(solution_correct[end][1,1,:], solution_correct[end][2,1,:], label = "blob, t = 10", markersize = markersize);
+scatter!(xs[1,1,:], xs[2,1,:], label = "initial sample", markersize = markersize);
+plot!(title = "pure diffusion", size = (1200, 1200), xlabel = "x", ylabel = "y")
+
+ε = 0.7
+correct_pdf(x) = reconstruct_pdf(ε, x, solution_correct[end])
+incorrect_pdf(x) = reconstruct_pdf(ε, x, solution_incorrect[end])
+sbtm_pdf(x) = reconstruct_pdf(ε, x, solution_sbtm[end])
+y = 0
+plot(-20:0.01:20, x -> correct_pdf([x,y]), label = "blob");
+plot!(-20:0.01:20, x -> sbtm_pdf([x,y]), label = "sbtm");
+plot!(-20:0.01:20, x -> pdf(f(ts[end]), [x,y]), label = "true")
