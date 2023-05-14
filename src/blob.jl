@@ -19,8 +19,9 @@ end
 function blob_score!(score_array :: Array, xs :: Array, pars)
     (ε, diff_norm2s, mol_sum, mols) = pars
     d, n = size(xs)
-    mol_sum .= zero(ε)
-    diff_norm2s .= zero(ε)
+    mol_sum .= 0
+    diff_norm2s .= 0
+    score_array .= 0
     @tturbo for p in 1:n, q in 1:n, k in 1:d
         diff_norm2s[p, q] += (xs[k, p] - xs[k, q])^2
     end

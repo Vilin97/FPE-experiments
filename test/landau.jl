@@ -67,6 +67,8 @@ function landau_test()
     println("L$p error for sbtm is $error.")
     @test error < tol
     @test eltype(sbtm_solution[end]) == Float32
+
+    # TODO also test moments like in fpe
 end
 
 landau_test()

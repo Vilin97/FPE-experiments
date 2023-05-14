@@ -1063,12 +1063,35 @@ function blob_score!(score_array, xs, pars)
     score_array .= term1 .+ term2
 end
 
+function blob_score!(score_array :: Array, xs :: Array, pars)
+    (ε, diff_norm2s, mol_sum, mols) = pars
+    d, n = size(xs)
+    mol_sum .= 0
+    diff_norm2s .= 0
+    score_array .= 0
+    @tturbo for p in 1:n, q in 1:n, k in 1:d
+        diff_norm2s[p, q] += (xs[k, p] - xs[k, q])^2
+    end
+    @tturbo for p in 1:n, q in 1:n
+        mols[p, q] = exp(-diff_norm2s[p, q]/ε)/sqrt((π*ε)^d)
+        mol_sum[p] += mols[p, q]
+    end
+    @tturbo for p in 1:n, q in 1:n, k in 1:d
+        fac = -2. / ε * mols[p, q]
+        diff_k = xs[k, p] - xs[k, q]
+        score_array[k, p] += fac * diff_k / mol_sum[p]
+        score_array[k, p] += fac * diff_k / mol_sum[q]
+    end
+end
+
 using CUDA
 function blob_score_gpu!(score_array, xs, pars)
     (ε, mol_sum) = pars
+    @assert size(xs) == size(score_array)
+    @assert size(xs, 2) == length(mol_sum)
     d, n = size(xs)
     threads = 512
-    CUDA.@sync @cuda threads = threads blocks = (n ÷ threads + 1) kernel1(mol_sum, xs, ε)
+    @cuda threads = threads blocks = (n ÷ threads + 1) kernel1(mol_sum, xs, ε)
     threads = (d, 384 ÷ d)
     @cuda threads = threads blocks = (1, n ÷ threads[2] + 1) kernel2(score_array, mol_sum, xs, ε)
 end
@@ -1077,7 +1100,7 @@ function kernel2(score_array, mol_sum, xs, ε)
     d, n = size(xs)
     k = (blockIdx().x-1) * blockDim().x + threadIdx().x
     p = (blockIdx().y-1) * blockDim().y + threadIdx().y
-    if k <= d && p <= n
+    @inbounds if k <= d && p <= n
         score_array[k, p] = zero(eltype(xs))
         for q in 1:n
             diff_norm2 = zero(eltype(xs))
@@ -1096,7 +1119,7 @@ end
 function kernel1(mol_sum, xs, ε)
     d, n = size(xs)
     p = (blockIdx().x-1) * blockDim().x + threadIdx().x
-    if p <= n
+    @inbounds if p <= n
         mol_sum[p] = zero(eltype(xs))
         for q in 1:n
             norm_diff = zero(eltype(xs))
@@ -1111,24 +1134,12 @@ function kernel1(mol_sum, xs, ε)
 end
 
 CUDA.allowscalar(false)
-n = 10_000
+n = 1_000
 d = 3
 xs = CUDA.randn(d, n)
 mol_sum = CUDA.zeros(n)
 score_array = CUDA.zeros(d, n)
 ε = 1f-1
-
-kernel = @cuda launch=false kernel1(mol_sum, xs, ε)
-config = launch_configuration(kernel.fun)
-N = length(mol_sum)
-threads = min(N, config.threads)
-blocks = cld(N, threads)
-
-kernel = @cuda launch=false kernel2(score_array, mol_sum, xs, ε)
-config = launch_configuration(kernel.fun)
-N = length(mol_sum)
-threads = min(N, config.threads)
-blocks = cld(N, threads)
 
 CUDA.@time blob_score_gpu!(score_array, xs, (ε, mol_sum))
 
@@ -1147,7 +1158,8 @@ term1 = zeros(Float32, d, n)
 term2 = zeros(Float32, d, n)
 mols = zeros(Float32, n, n)
 
-@time blob_score!(score_array_cpu, x_cpu, (ε, diff_norm2s, mol_sum_cpu, term1, term2, mols))
+# @time blob_score!(score_array_cpu, x_cpu, (ε, diff_norm2s, mol_sum_cpu, term1, term2, mols))
+@time blob_score!(score_array_cpu, x_cpu, (ε, diff_norm2s, mol_sum_cpu, mols))
 
 maximum(abs, cpu(mol_sum) .- mol_sum_cpu)
 maximum(abs, cpu(score_array) .- score_array_cpu)

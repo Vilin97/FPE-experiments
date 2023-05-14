@@ -14,7 +14,7 @@ function no_diffusion_test()
     dt = 0.01
     tspan = (0.0, 1.0)
     ts = tspan[1]:dt:tspan[2]
-    xs = reshape([x0], 1, 1, 1)
+    xs = reshape([x0], 1, 1)
     rtol = 0.01
 
     @timeit "blob" solution = blob_fpe(xs, ts, b, D; ε = 1/π, saveat = ts)
@@ -41,10 +41,12 @@ function diffusion_test()
     
     # cpu
     @timeit "blob" blob_solution = blob_fpe(xs, ts, b, D; ε = ε, saveat = ts[end])
+    Random.seed!(1234)
     @timeit "sbtm" sbtm_solution, _, _ = sbtm_fpe(xs, ts, b, D; ρ₀ = ρ(0.), verbose = 0, saveat = ts[end])
     # gpu
     xsg = gpu(xs); tsg = gpu(ts); ε = Float32(ε)
     @timeit "blob" blob_solution_gpu = blob_fpe(xsg, tsg, b, D; ε = ε, saveat = ts[end])
+    Random.seed!(1234)
     @timeit "sbtm" sbtm_solution_gpu, _, _ = sbtm_fpe(xsg, tsg, b, D; ρ₀ = ρ(0.), verbose = 0, saveat = ts[end])
     @test cpu(blob_solution_gpu.u) ≈ blob_solution.u rtol = 1e-2
     @test cpu(sbtm_solution_gpu.u) ≈ sbtm_solution.u rtol = 1e-2
@@ -53,8 +55,8 @@ function diffusion_test()
         println("L$p error for $label is $error")
         @test error < lp_tol
 
-        emp_mean = empirical_first_moment(xs)
-        emp_cov = empirical_covariance(xs)
+        emp_mean = empirical_first_moment(solution[end])
+        emp_cov = empirical_covariance(solution[end])
         cov_diff = cov(ρ(ts[end])) - emp_cov
         println("$(label) mean error = $(norm(emp_mean))")
         println("$(label) cov norm error = $(norm(cov_diff))")

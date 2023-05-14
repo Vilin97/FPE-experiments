@@ -10,16 +10,11 @@ end
 function blob_fpe_solve(xs, ts :: AbstractVector{T}, b, D, ε :: T; saveat, verbose = 0, kwargs...) where T
     verbose > 0 && println("Blob method. n = $(num_particles(xs)), ε = $ε.")
     tspan = (ts[1], ts[end])
-    n = num_particles(xs)
-    d = get_d(xs)
-    initial = xs
     score_params_ = score_params(xs, ε)
-
-    score_values_temp = similar(xs)
-    score_values_temp .= 0
+    score_values_temp = zero(xs)
     pars = (score_values_temp, b, D, score_params_)
     
-    ode_problem = ODEProblem(blob_fpe_f!, initial, tspan, pars)
+    ode_problem = ODEProblem(blob_fpe_f!, xs, tspan, pars)
     solution = solve(ode_problem, saveat = saveat, alg = Euler(), tstops = ts)
 end
 

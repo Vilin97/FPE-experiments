@@ -10,15 +10,9 @@ end
 function blob_landau_solve(xs, ts :: AbstractVector{T}, ε :: T; saveat, verbose = 0, kwargs...) where T
     verbose > 0 && println("Blob method. n = $(num_particles(xs)), ε = $ε.")
     tspan = (ts[1], ts[end])
-    d, n = size(xs)
-    initial = xs
-    diff_norm2s = zeros(T, n, n)
-    mol_sum = zeros(T, n)
-    mols = zeros(T, n, n)
-    score_params = (ε, diff_norm2s, mol_sum, mols)
-
-    score_values_temp = similar(xs)
-    pars = (score_values_temp, score_params)
+    score_params_ = score_params(xs, ε)
+    score_values_temp = zero(xs)
+    pars = (score_values_temp, score_params_)
     
     ode_problem = ODEProblem(landau_f_blob!, initial, tspan, pars)
     solution = solve(ode_problem, saveat = saveat, alg = Euler(), tstops = ts)
