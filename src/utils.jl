@@ -182,9 +182,9 @@ end
 function pure_diffusion(d, n, dt = 0.005, t_end = 2.)
     b(x,t) = zero(x)
     D(x,t::T) where T = T(1.0)
-    ρ(t) = MvNormal(2. * (t+1.) * I(d))
+    ρ(t) = MvNormal(2 * (t+1) * I(d))
     ρ₀ = ρ(0.)
-    xs = reshape(rand(ρ₀, n), d, 1, n)
+    xs = reshape(rand(ρ₀, n), d, n)
     tspan = (0.0, t_end)
     ts = tspan[1]:dt:tspan[2]
 
@@ -193,10 +193,10 @@ end
 
 function attractive_origin(d, n, dt = 0.005, t_end = 1.)
     b(x,t) = -x
-    D(x,t::T) where T = T(1.0)
-    ρ(t) = MvNormal((1 - exp(-2*(t+1.)))*I(d))
+    D(x,t::T) where T = T(1)
+    ρ(t) = MvNormal((1 - exp(-2*(t+1)))*I(d))
     ρ₀ = ρ(0.)
-    xs = reshape(rand(ρ₀, n), d, 1, n)
+    xs = reshape(rand(ρ₀, n), d, n)
     tspan = (0.0, t_end)
     ts = tspan[1]:dt:tspan[2]
 

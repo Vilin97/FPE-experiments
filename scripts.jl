@@ -1012,3 +1012,86 @@ y = 0
 plot(-20:0.01:20, x -> correct_pdf([x,y]), label = "blob");
 plot!(-20:0.01:20, x -> sbtm_pdf([x,y]), label = "sbtm");
 plot!(-20:0.01:20, x -> pdf(f(ts[end]), [x,y]), label = "true")
+
+# comparing sbtm on cpu and gpu
+using BenchmarkTools
+no_alloc!(x) = for i in eachindex(x) x[i] = randn() end
+alloc(x) = (x = randn(size(x)))
+x = randn(3*160_000)
+@btime no_alloc!($x) # allocates
+@btime alloc($x)
+
+# fpe on gpu
+include("src/fpe/sbtm.jl")
+d = 2
+s = Chain(Dense(d => 100, softsign), Dense(100 => 100, softsign), Dense(100 => d))
+n = 100_000
+xs, ts, b, D, ρ₀, ρ = pure_diffusion(d, n, 0.01, 0.02)
+
+
+sg = gpu(s)
+xsg = gpu(xs)
+tsg = gpu(ts)
+CUDA.@time sol_gpu,_,_=sbtm_fpe(xsg, tsg, b, D; s = sg, saveat = tsg[end]) # 12 seconds
+
+@time sol_cpu,_,_=sbtm_fpe(xs, ts, b, D; s = s, saveat = ts[end]) # 276 seconds
+maximum(abs, cpu(sol_gpu.u)[end] .- sol_cpu.u[end])
+
+
+# converting blob to gpu
+function blob_score!(score_array, xs, pars)
+    (ε, diff_norm2s, mol_sum, term1, term2, mols) = pars
+    d, n = size(xs)
+    mol_sum .= zero(ε)
+    diff_norm2s .= zero(ε)
+    term1 .= zero(ε)
+    term2 .= zero(ε)
+    @tturbo for p in 1:n, q in 1:n, k in 1:d
+        diff_norm2s[p, q] += (xs[k, p] - xs[k, q])^2
+    end
+    @tturbo for p in 1:n, q in 1:n
+        mols[p, q] = exp(-diff_norm2s[p, q]/ε)/sqrt((π*ε)^d)
+        mol_sum[p] += mols[p, q]
+    end
+    @tturbo for p in 1:n, q in 1:n, k in 1:d
+        fac = -2. / ε * mols[p, q]
+        diff_k = xs[k, p] - xs[k, q]
+        term1[k, p] += fac * diff_k / mol_sum[p]
+        term2[k, p] += fac * diff_k / mol_sum[q]
+    end
+    score_array .= term1 .+ term2
+end
+
+function kernel1(diff_norms, xs)
+    d, n = size(xs)
+    p, q = threadIdx().x, threadIdx().y
+    if p <= n && q <= n
+        diff_norms[p,q] = 0
+        for k in 1:d
+            diff_norms[p,q] += (xs[k, p] - xs[k, q])^2
+        end
+    end
+    return
+end
+
+n = 10
+d = 3
+xs = CUDA.randn(d, n)
+diff_norms = CUDA.ones(n, n)
+@cuda threads = (32, 32) blocks = (n ÷ 32 + 1, n ÷ 32 + 1) kernel1(diff_norms, xs)
+
+xs = cpu(xs)
+diff_norm2s = zeros(n, n)
+for p in 1:n, q in 1:n, k in 1:d
+    diff_norm2s[p, q] += (xs[k, p] - xs[k, q])^2
+end
+maximum(abs, cpu(diff_norms) .- diff_norm2s)
+
+
+ker = @cuda launch=false kernel1(diff_norms, xs)
+config = launch_configuration(ker.fun)
+threads = min(N, config.threads)
+blocks = cld(N, threads)
+
+diff_norms = CUDA.ones(n, n)
+@cuda threads = (2,2) blocks = 6 kernel1(diff_norms, xs)

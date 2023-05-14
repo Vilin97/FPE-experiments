@@ -46,7 +46,6 @@ function diffusion_test()
         println("L$p error for $label is $error")
         @test error < lp_tol
 
-        xs = reshape(solution[end], d, n)
         emp_mean = empirical_first_moment(xs)
         emp_cov = empirical_covariance(xs)
         cov_diff = cov(ρ(ts[end])) - emp_cov

@@ -5,14 +5,6 @@ using Flux.Optimise: Adam
 include("../utils.jl")
 include("../sbtm.jl")
 
-"""
-xs  : sample from initial probability distribution
-Δts : list of Δt's
-b   : Rᵈ × R → Rᵈ
-D   : Rᵈ × R → Rᵈˣᵈ or R
-n   : number of particles
-s   : NN to approximate score ∇log ρ
-"""
 function sbtm_fpe(xs, ts, b, D; ρ₀ = nothing, s = nothing, size_hidden=100, num_hidden=1, error_tolerance = 1e-3, kwargs...)
     isnothing(s) && isnothing(ρ₀) && error("Must provide either s or ρ₀.")
     isnothing(s) ? (s_new = initialize_s(ρ₀, Float32.(xs), size_hidden, num_hidden; error_tolerance = error_tolerance, kwargs...)) : (s_new = deepcopy(s))
@@ -38,8 +30,10 @@ function sbtm_fpe_solve(xs, ts :: AbstractVector{T}, b, D, s; saveat, epochs = 2
             end
         end
         state = Flux.setup(optimiser, s)
+        ζ = similar(xs)
         @timeit "update NN" for epoch in 1:epochs
-            loss_value, grads = withgradient(s -> loss(s, xs, denoising_alpha), s)
+            randn!(ζ)
+            loss_value, grads = withgradient(s -> loss(s, xs, ζ, denoising_alpha), s)
             Flux.update!(state, s, grads[1])
             record_losses && (losses[epoch, k] = loss_value)
             verbose > 2 && println("Epoch $epoch, loss = $loss_value.")

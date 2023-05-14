@@ -119,7 +119,7 @@ function landau_sbtm_experiment(;num_runs = 10, verbose = 1)
         xs, ts, ρ = landau(n, start_time)
         saveat = ts[[1, 2, (length(ts)+1)÷2, end]]
         ρ₀(x) = ρ(x,K(0))
-        combined_solution = [Float32, zeros(size(xs, 1), size(xs, 2)*num_runs) for _ in saveat]
+        combined_solution = [zeros(Float32, size(xs, 1), size(xs, 2)*num_runs) for _ in saveat]
         println("n = $n")
         combined_models = Matrix{Chain}(undef, length(saveat), num_runs)
         @timeit "n = $n" for run in 1:num_runs

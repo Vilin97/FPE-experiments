@@ -55,6 +55,10 @@ end
 
 function loss(s, xs :: AbstractArray{T}, α) where T
     ζ = randn(T, size(xs))
+    loss(s, xs, ζ, α)
+end
+
+function loss(s, xs :: AbstractArray{T}, ζ :: AbstractArray{T}, α) where T
     denoise_val = ( s(xs .+ α .* ζ) ⋅ ζ - s(xs .- α .* ζ) ⋅ ζ ) / α
     (norm(s(xs))^2 + denoise_val)/num_particles(xs)
 end
