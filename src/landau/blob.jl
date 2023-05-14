@@ -14,10 +14,8 @@ function blob_landau_solve(xs, ts :: AbstractVector{T}, ε :: T; saveat, verbose
     initial = xs
     diff_norm2s = zeros(T, n, n)
     mol_sum = zeros(T, n)
-    term1 = zeros(T, d, n)
-    term2 = zeros(T, d, n)
     mols = zeros(T, n, n)
-    score_params = (ε, diff_norm2s, mol_sum, term1, term2, mols)
+    score_params = (ε, diff_norm2s, mol_sum, mols)
 
     score_values_temp = similar(xs)
     pars = (score_values_temp, score_params)

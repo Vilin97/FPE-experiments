@@ -1039,6 +1039,7 @@ maximum(abs, cpu(sol_gpu.u)[end] .- sol_cpu.u[end])
 
 
 # converting blob to gpu
+using LoopVectorization
 function blob_score!(score_array, xs, pars)
     (ε, diff_norm2s, mol_sum, term1, term2, mols) = pars
     d, n = size(xs)
@@ -1054,7 +1055,7 @@ function blob_score!(score_array, xs, pars)
         mol_sum[p] += mols[p, q]
     end
     @tturbo for p in 1:n, q in 1:n, k in 1:d
-        fac = -2. / ε * mols[p, q]
+        fac = -2 / ε * mols[p, q]
         diff_k = xs[k, p] - xs[k, q]
         term1[k, p] += fac * diff_k / mol_sum[p]
         term2[k, p] += fac * diff_k / mol_sum[q]
@@ -1062,23 +1063,94 @@ function blob_score!(score_array, xs, pars)
     score_array .= term1 .+ term2
 end
 
-function kernel1(diff_norms, xs)
+using CUDA
+function blob_score_gpu!(score_array, xs, pars)
+    (ε, mol_sum) = pars
     d, n = size(xs)
-    p, q = threadIdx().x, threadIdx().y
-    if p <= n && q <= n
-        diff_norms[p,q] = 0
-        for k in 1:d
-            diff_norms[p,q] += (xs[k, p] - xs[k, q])^2
+    threads = 512
+    CUDA.@sync @cuda threads = threads blocks = (n ÷ threads + 1) kernel1(mol_sum, xs, ε)
+    threads = (d, 384 ÷ d)
+    @cuda threads = threads blocks = (1, n ÷ threads[2] + 1) kernel2(score_array, mol_sum, xs, ε)
+end
+
+function kernel2(score_array, mol_sum, xs, ε)
+    d, n = size(xs)
+    k = (blockIdx().x-1) * blockDim().x + threadIdx().x
+    p = (blockIdx().y-1) * blockDim().y + threadIdx().y
+    if k <= d && p <= n
+        score_array[k, p] = zero(eltype(xs))
+        for q in 1:n
+            diff_norm2 = zero(eltype(xs))
+            for k in 1:d
+                diff_norm2 += (xs[k, p] - xs[k, q])^2
+            end
+            mol_pq = exp(-diff_norm2/ε)/sqrt((π*ε)^d)
+            fac = -2 / ε * mol_pq
+            diff_k = xs[k, p] - xs[k, q]
+            score_array[k, p] += fac * (diff_k) / mol_sum[p]
+            score_array[k, p] += fac * (diff_k) / mol_sum[q]
+        end
+    end
+end
+
+function kernel1(mol_sum, xs, ε)
+    d, n = size(xs)
+    p = (blockIdx().x-1) * blockDim().x + threadIdx().x
+    if p <= n
+        mol_sum[p] = zero(eltype(xs))
+        for q in 1:n
+            norm_diff = zero(eltype(xs))
+            for k in 1:d
+                norm_diff += (xs[k, p] - xs[k, q])^2
+            end
+            mol_pq = exp(-norm_diff/ε)/sqrt((π*ε)^d)
+            mol_sum[p] += mol_pq
         end
     end
     return
 end
 
-n = 10
+CUDA.allowscalar(false)
+n = 10_000
 d = 3
 xs = CUDA.randn(d, n)
-diff_norms = CUDA.ones(n, n)
-@cuda threads = (32, 32) blocks = (n ÷ 32 + 1, n ÷ 32 + 1) kernel1(diff_norms, xs)
+mol_sum = CUDA.zeros(n)
+score_array = CUDA.zeros(d, n)
+ε = 1f-1
+
+kernel = @cuda launch=false kernel1(mol_sum, xs, ε)
+config = launch_configuration(kernel.fun)
+N = length(mol_sum)
+threads = min(N, config.threads)
+blocks = cld(N, threads)
+
+kernel = @cuda launch=false kernel2(score_array, mol_sum, xs, ε)
+config = launch_configuration(kernel.fun)
+N = length(mol_sum)
+threads = min(N, config.threads)
+blocks = cld(N, threads)
+
+CUDA.@time blob_score_gpu!(score_array, xs, (ε, mol_sum))
+
+
+# threads = 512
+# @cuda threads = threads blocks = (n ÷ threads + 1) kernel1(mol_sum, xs, ε)
+# threads = (d,32)
+# @cuda threads = threads blocks = (1, n ÷ threads[2] + 1) kernel2(score_array, mol_sum, xs, ε)
+
+using Flux
+score_array_cpu = zeros(Float32, d, n)
+x_cpu = cpu(xs)
+diff_norm2s = zeros(Float32, n, n)
+mol_sum_cpu = zeros(Float32, n)
+term1 = zeros(Float32, d, n)
+term2 = zeros(Float32, d, n)
+mols = zeros(Float32, n, n)
+
+@time blob_score!(score_array_cpu, x_cpu, (ε, diff_norm2s, mol_sum_cpu, term1, term2, mols))
+
+maximum(abs, cpu(mol_sum) .- mol_sum_cpu)
+maximum(abs, cpu(score_array) .- score_array_cpu)
 
 xs = cpu(xs)
 diff_norm2s = zeros(n, n)
@@ -1095,3 +1167,19 @@ blocks = cld(N, threads)
 
 diff_norms = CUDA.ones(n, n)
 @cuda threads = (2,2) blocks = 6 kernel1(diff_norms, xs)
+
+
+
+
+using CUDA
+a = CUDA.zeros(100_000)
+
+function kernel(a)
+    i = (blockIdx().x-1) * blockDim().x + threadIdx().x
+    if i <= length(a)
+        a[i] += 1
+    end
+    return
+end
+
+@cuda threads=1024 blocks = (length(a) ÷ 1024 + 1) kernel(a)

@@ -38,9 +38,16 @@ function diffusion_test()
     lp_tol = 0.2
     mean_tol = 0.1
     cov_tol = 15
-
+    
+    # cpu
     @timeit "blob" blob_solution = blob_fpe(xs, ts, b, D; ε = ε, saveat = ts[end])
     @timeit "sbtm" sbtm_solution, _, _ = sbtm_fpe(xs, ts, b, D; ρ₀ = ρ(0.), verbose = 0, saveat = ts[end])
+    # gpu
+    xsg = gpu(xs); tsg = gpu(ts); ε = Float32(ε)
+    @timeit "blob" blob_solution_gpu = blob_fpe(xsg, tsg, b, D; ε = ε, saveat = ts[end])
+    @timeit "sbtm" sbtm_solution_gpu, _, _ = sbtm_fpe(xsg, tsg, b, D; ρ₀ = ρ(0.), verbose = 0, saveat = ts[end])
+    @test cpu(blob_solution_gpu.u) ≈ blob_solution.u rtol = 1e-2
+    @test cpu(sbtm_solution_gpu.u) ≈ sbtm_solution.u rtol = 1e-2
     for (solution, label) in [(blob_solution, "blob"), (sbtm_solution, "sbtm")]
         error = Lp_error_marginal(solution, ρ, ts[end]; p=p, k = k)
         println("L$p error for $label is $error")

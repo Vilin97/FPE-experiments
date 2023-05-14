@@ -14,6 +14,9 @@ function initialize_s(ρ₀, xs, size_hidden, num_hidden; activation = softsign,
         repeat([Dense(size_hidden, size_hidden, activation)], num_hidden-1)...,
         Dense(size_hidden => d_bar)
         )
+    if xs isa CuArray
+        s = gpu(s)
+    end
     @timeit "NN init" initialize_s!(s, ρ₀, xs; verbose = verbose, kwargs...)
     return s
 end

@@ -1,4 +1,4 @@
-using Statistics, LinearAlgebra, Distributions, HCubature, Zygote, DifferentialEquations
+using Statistics, LinearAlgebra, Distributions, HCubature, Zygote, DifferentialEquations, CUDA
 import Distributions.gradlogpdf
 
 ############ fast linear algebra ############
@@ -147,6 +147,7 @@ get_d(xs :: AbstractArray{T, 1}) where T = 1
 
 "∇log ρ(x) for each column x of xs."
 # score(ρ, xs) = mapslices(x -> gradlogpdf(ρ, x), xs, dims=1) # this is slow
+score(ρ, xs :: CuArray) = cu(score(ρ, Array(xs)))
 score(ρ, xs :: AbstractArray{T,1}) where T = gradlogpdf(ρ, xs)
 score(ρ, xs :: AbstractArray{T,2}) where T = reshape(hcat([gradlogpdf(ρ, @view xs[:,i]) for i in axes(xs, 2)]...), size(xs))
 score(ρ, xs :: AbstractArray{T,3}) where T = reshape(hcat([gradlogpdf(ρ, @view xs[:,i,j]) for i in axes(xs, 2), j in axes(xs, 3)]...), size(xs))
