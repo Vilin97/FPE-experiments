@@ -180,7 +180,7 @@ function moving_trap(N, num_samples, num_timestamps)
     xs, Δts, b, D, ρ₀, target, a, w, α, β
 end
 
-function pure_diffusion(d, n, dt = 0.005, t_end = 2.)
+function pure_diffusion(d, n; dt = 0.01, t_end = 2.)
     b(x,t) = zero(x)
     D(x,t::T) where T = T(1.0)
     ρ(t) = MvNormal(2 * (t+1) * I(d))

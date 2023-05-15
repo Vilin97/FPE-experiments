@@ -1040,28 +1040,6 @@ maximum(abs, cpu(sol_gpu.u)[end] .- sol_cpu.u[end])
 
 # converting blob to gpu
 using LoopVectorization
-function blob_score!(score_array, xs, pars)
-    (ε, diff_norm2s, mol_sum, term1, term2, mols) = pars
-    d, n = size(xs)
-    mol_sum .= zero(ε)
-    diff_norm2s .= zero(ε)
-    term1 .= zero(ε)
-    term2 .= zero(ε)
-    @tturbo for p in 1:n, q in 1:n, k in 1:d
-        diff_norm2s[p, q] += (xs[k, p] - xs[k, q])^2
-    end
-    @tturbo for p in 1:n, q in 1:n
-        mols[p, q] = exp(-diff_norm2s[p, q]/ε)/sqrt((π*ε)^d)
-        mol_sum[p] += mols[p, q]
-    end
-    @tturbo for p in 1:n, q in 1:n, k in 1:d
-        fac = -2 / ε * mols[p, q]
-        diff_k = xs[k, p] - xs[k, q]
-        term1[k, p] += fac * diff_k / mol_sum[p]
-        term2[k, p] += fac * diff_k / mol_sum[q]
-    end
-    score_array .= term1 .+ term2
-end
 
 function blob_score!(score_array :: Array, xs :: Array, pars)
     (ε, diff_norm2s, mol_sum, mols) = pars
@@ -1180,9 +1158,6 @@ blocks = cld(N, threads)
 diff_norms = CUDA.ones(n, n)
 @cuda threads = (2,2) blocks = 6 kernel1(diff_norms, xs)
 
-
-
-
 using CUDA
 a = CUDA.zeros(100_000)
 
@@ -1195,3 +1170,56 @@ function kernel(a)
 end
 
 @cuda threads=1024 blocks = (length(a) ÷ 1024 + 1) kernel(a)
+
+# benchmarking cpu vs gpu fpe
+using Random, CUDA
+include("src/fpe/sbtm.jl")
+include("src/fpe/blob.jl")
+CUDA.allowscalar(false)
+d = 3
+n = 10^3
+ε = epsilon(d, n)
+Random.seed!(1234)
+xs, ts, b, D, ρ₀, ρ = pure_diffusion(d, n, 0.05)
+@show n
+
+# blob
+@time blob_fpe(xs, ts, b, D; ρ₀ = ρ₀, ε = ε, saveat = ts[end])
+CUDA.@time blob_fpe(xs, ts, b, D; ρ₀ = ρ₀, ε = ε, saveat = ts[end], usegpu = true)
+
+# sbtm
+@time sbtm_fpe(xs, ts, b, D; ρ₀ = ρ₀, ε = ε, saveat = ts[end], verbose = 1)
+CUDA.@time sol, models, _ = sbtm_fpe(xs, ts, b, D; ρ₀ = ρ₀, ε = ε, saveat = ts[[1,2,end]], usegpu = true, verbose = 1, record_models = true)
+
+cu(sol)
+
+# tsg = cu(Float32.(0:0.01:1))
+# dt = 1f-2
+# affect!(integrator) = nothing
+# f!(du, u, p, t) = (du .= u)
+# ode_problem = ODEProblem(f!, cu([1.]), (0f0, 1f0), nothing)
+
+# cbg = PresetTimeCallback(tsg, affect!, save_positions=(false,false))
+# cb = PresetTimeCallback(0:dt:1, affect!, save_positions=(false,false))
+# solution = solve(ode_problem, alg = Euler(), dt = dt, callback = cbg) # ERROR: CuArray only supports element types that are allocated inline.
+# solution = solve(ode_problem, alg = Euler(), dt = dt, callback = cb) # ERROR: CuArray only supports element types that are allocated inline.
+# solution = solve(ode_problem, alg = Euler(), dt = dt) # Success
+
+using OrdinaryDiffEq, CUDA, LinearAlgebra
+u0 = cu(rand(1000))
+A = cu(randn(1000, 1000))
+f(du, u, p, t) = mul!(du, A, u)
+prob = ODEProblem(f, u0, (0.0f0, 1.0f0)) # Float32 is better on GPUs!
+sol_ = solve(prob, Tsit5())
+sol_.u = cpu(sol_.u)
+cpu(sol_) # returns a CuArray instead of a solution with 
+
+# pre train diffusion model
+using JLD2
+n = 20_000
+for d in [2,3,5,10]
+    xs, ts, b, D, ρ₀, ρ = pure_diffusion(d, n)
+    s = Chain(Dense(d => 100, softsign), Dense(100 => d))
+    initialize_s!(s, ρ₀, xs, loss_tolerance = 1e-4, verbose = 2, max_iter = 10^5)
+    save("models/diffusion_model_d_$(d)_n_$(n)_start_1.jld2", "s", s)
+end
