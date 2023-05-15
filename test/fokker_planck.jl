@@ -31,7 +31,7 @@ function diffusion_test()
     ε = 0.05
     d = 2
     n = 1000
-    xs, ts, b, D, ρ₀, ρ = pure_diffusion(d, n, 0.01, 10.)
+    xs, ts, b, D, ρ₀, ρ = pure_diffusion(d, n; dt = 0.01, t_end = 10.)
     p = 1
     k = 1
     # error tolerance
