@@ -14,7 +14,7 @@ function blob_landau_solve(xs, ts :: AbstractVector{T}, ε :: T; saveat, verbose
     score_values_temp = zero(xs)
     pars = (score_values_temp, score_params_)
     
-    ode_problem = ODEProblem(landau_f_blob!, initial, tspan, pars)
+    ode_problem = ODEProblem(landau_f_blob!, xs, tspan, pars)
     solution = solve(ode_problem, saveat = saveat, alg = Euler(), tstops = ts)
 end
 

@@ -22,7 +22,6 @@ function sbtm_landau(xs, ts; ρ₀ = nothing, s = nothing, size_hidden=100, num_
     solution, models, losses = sbtm_landau_solve(Float32.(xs), Float32.(ts), s_new; kwargs...)
 end
 
-# TODO check that Float32 is preserved throughout
 function sbtm_landau_solve(xs, ts :: AbstractVector{T}, s; saveat, epochs = 25, verbose = 0, optimiser = Adam(1e-4), denoising_alpha = T(0.4), record_models = false, record_losses = false, kwargs...) where T
     verbose > 0 && println("SBTM method. n = $(num_particles(xs)).")
     tspan = (zero(T), ts[end])
