@@ -180,13 +180,13 @@ function moving_trap(N, num_samples, num_timestamps)
     xs, Δts, b, D, ρ₀, target, a, w, α, β
 end
 
-function pure_diffusion(d, n; dt = 0.01, t_end = 2.)
+function pure_diffusion(d, n; dt = 1f-2, t_end = 2f0)
     b(x,t) = zero(x)
     D(x,t::T) where T = T(1.0)
     ρ(t) = MvNormal(2 * (t+1) * I(d))
     ρ₀ = ρ(0.)
-    xs = reshape(rand(ρ₀, n), d, n)
-    tspan = (0.0, t_end)
+    xs = Float32.(reshape(rand(ρ₀, n), d, n))
+    tspan = (0f0, t_end)
     ts = tspan[1]:dt:tspan[2]
 
     xs, ts, b, D, ρ₀, ρ

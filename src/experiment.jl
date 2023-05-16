@@ -148,18 +148,17 @@ function diffusion_sbtm_experiment(ds, ns; num_runs = 10, verbose = 1)
     end
 end
 
-function diffusion_blob_experiment(ds, ns;num_runs = 10, verbose = 1)
+function diffusion_blob_experiment(ds, ns; num_runs = 10, verbose = 1)
     # ds = [2]
-    # ns = [1_000]
-    reset_timer!()
-    @timeit "blob" for d in ds
-        @timeit "d = $d" for n in ns
-            ε = epsilon(d, n)
+    # ns = [100,1_000, 5000]
+    for n in ns
+        @timeit "n = $n" for d in ds
+            ε = Float32(epsilon(d, n))
             xs, ts, b, D, ρ₀, ρ = pure_diffusion(d, n)
             saveat = ts[[1, (length(ts)+1)÷2, end]]
             combined_solution = [zeros(eltype(xs), d, n*num_runs) for _ in saveat]
             @show d, n, ε
-            @timeit "n = $n" for run in 1:num_runs
+            @timeit "d = $d" for run in 1:num_runs
                 Random.seed!(run)
                 xs, ts, b, D, ρ₀, ρ = pure_diffusion(d, n)
                 @timeit "solve" CUDA.@sync solution = blob_fpe(xs, ts, b, D; verbose = verbose, saveat = saveat, ε = ε, usegpu = true)
@@ -175,14 +174,17 @@ function diffusion_blob_experiment(ds, ns;num_runs = 10, verbose = 1)
             "num_runs", num_runs,
             "timer", TimerOutputs.get_defaulttimer(),
             "ts", ts)
-            print_timer()
         end
+        print_timer()
     end
 end
-ds = [2, 3, 5, 10]
+# ds = [2, 3, 5, 10]
+ds = [3, 5, 10]
 ns = [2_500, 5_000, 10_000, 20_000, 40_000, 80_000, 160_000]
-diffusion_sbtm_experiment(ds, ns; num_runs = 10)
-diffusion_blob_experiment(ds, ns; num_runs = 10)
+# diffusion_sbtm_experiment(ds, ns; num_runs = 10)
+reset_timer!()
+@timeit "blob diffusion" diffusion_blob_experiment(ds, ns; num_runs = 10)
+print_timer()
 
 function landau_sbtm_experiment(;num_runs = 10, verbose = 1)
     ns = [2_500, 5_000, 10_000, 20_000, 40_000, 80_000, 160_000]

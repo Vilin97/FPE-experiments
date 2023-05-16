@@ -28,7 +28,12 @@ function blob_fpe_f!(dxs, xs_, pars, t)
     n = num_particles(xs_)
     d = get_d(xs_)
     xs = reshape(xs_, d, n)
-    @timeit "compute score" blob_score!(score_values, xs, score_params)
+    blob_score!(score_values, xs, score_params)
     dxs .= -D(xs_,t) .* reshape(score_values, size(xs_)) .+ b(xs_, t)
 end
 
+function blob_fpe_f!(dxs, xs :: AbstractArray{T, 2}, pars, t) where T
+    score_values, b, D, score_params = pars
+    blob_score!(score_values, xs, score_params)
+    dxs .= -D(xs,t) .* score_values .+ b(xs, t)
+end
