@@ -7,6 +7,8 @@ function blob_fpe(xs, ts, b, D; ε, usegpu = false, kwargs...)
     if usegpu
         xs = cu(xs)
         ε = Float32(ε)
+    else
+        ε = eltype(xs)(ε)
     end
     solution = blob_fpe_solve(xs, ts, b, D, ε; kwargs...)
 end
