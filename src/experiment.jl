@@ -161,7 +161,7 @@ function diffusion_blob_experiment(ds, ns; num_runs = 10, verbose = 1)
             @timeit "d = $d" for run in 1:num_runs
                 Random.seed!(run)
                 xs, ts, b, D, ρ₀, ρ = pure_diffusion(d, n)
-                @timeit "solve" CUDA.@sync solution = blob_fpe(xs, ts, b, D; verbose = verbose, saveat = saveat, ε = ε, usegpu = true)
+                solution = blob_fpe(xs, ts, b, D; verbose = verbose, saveat = saveat, ε = ε, usegpu = true)
                 for i in 1:length(saveat)
                     combined_solution[i][:, (run-1)*n+1 : run*n] .= cpu(solution.u[i])
                 end

@@ -80,13 +80,18 @@ empirical_first_moment(xs :: AbstractArray{T, 2}) where T = vec(mean(xs, dims = 
 empirical_second_moment(xs :: AbstractArray{T, 2}) where T = xs * xs' / (num_particles(xs) - 1)
 empirical_covariance(xs :: AbstractArray{T, 2}) where T = empirical_second_moment(xs .- empirical_first_moment(xs))
 
-### kl divergence ###
+### entropies ###
 # TODO: currently incorrect
 "1/n ∑ᵢ [log rec_pdf(xᵢ) - log true_pdf(xᵢ)]"
 function KL_divergence(u :: AbstractArray, true_pdf)
     n = num_particles(u)
     Z = sum(true_pdf, eachcol(u))
     sum(x -> log(Z/n/true_pdf(x)), eachcol(u))/n
+end
+
+function entropy(ε, u :: AbstractMatrix)
+    n = num_particles(u)
+    sum( log(reconstruct_pdf(ε, x, u)) for x in eachcol(u) )/n
 end
 
 ### Lp error ###
@@ -153,6 +158,7 @@ score(ρ, xs :: AbstractArray{T,2}) where T = reshape(hcat([gradlogpdf(ρ, @view
 score(ρ, xs :: AbstractArray{T,3}) where T = reshape(hcat([gradlogpdf(ρ, @view xs[:,i,j]) for i in axes(xs, 2), j in axes(xs, 3)]...), size(xs))
 gradlogpdf(f :: Function, x) = gradient(log ∘ f, x)[1]
 
+split_into_runs(xs :: AbstractArray{T, 2}, num_runs) where T = reshape(xs, size(xs, 1), :, num_runs)
 ############ FPE set-up ############
 function moving_trap(N, num_samples, num_timestamps)
     d = 2 # dimension of each particle
