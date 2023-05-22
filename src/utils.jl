@@ -159,6 +159,14 @@ score(ρ, xs :: AbstractArray{T,3}) where T = reshape(hcat([gradlogpdf(ρ, @view
 gradlogpdf(f :: Function, x) = gradient(log ∘ f, x)[1]
 
 split_into_runs(xs :: AbstractArray{T, 2}, num_runs) where T = reshape(xs, size(xs, 1), :, num_runs)
+
+function log_fit(xs, ys)
+    fit_log = Polynomials.fit(log.(xs), log.(ys), 1)
+    slope = round(fit_log.coeffs[2], digits = 2)
+    poly = exp.( fit_log.(log.(xs)) )
+    slope, poly
+end
+
 ############ FPE set-up ############
 function moving_trap(N, num_samples, num_timestamps)
     d = 2 # dimension of each particle

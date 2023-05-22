@@ -1238,3 +1238,30 @@ for d in [2,3,5,10]
     initialize_s!(s, ρ₀, xs, loss_tolerance = 1e-4, verbose = 2, max_iter = 10^5)
     save("models/diffusion_model_d_$(d)_n_$(n)_start_1.jld2", "s", s)
 end
+
+# plot timings
+sbtm_t = load("diffusion_experiment/sbtm_d_10_n_160000_runs_10.jld2", "timer")
+blob_t = load("diffusion_experiment/blob_d_10_n_160000_runs_10.jld2", "timer")
+sbtm_ns = [2_500, 5_000, 10_000, 20_000, 40_000, 80_000, 160_000]
+for n in sbtm_ns
+    @show TimerOutputs.time(sbtm_t["sbtm"]["d = 10"]["n = $n"])/10^9
+end
+
+blob_ns = [2_500, 5_000, 10_000, 20_000, 40_000, 80_000, 160_000]
+for n in blob_ns
+    @show TimerOutputs.time(blob_t["blob diffusion"]["n = $n"]["d = 10"])/10^9
+end
+
+plt = plot(title = "GPU diffusion timings (s)", xlabel = "number of particles", ylabel = "time (s)", size = (1200, 600), xscale = :log10, yscale = :log10);
+
+sbtm_timings = [TimerOutputs.time(sbtm_t["sbtm"]["d = 10"]["n = $n"])/10^9 for n in sbtm_ns]
+slope, poly = log_fit(sbtm_ns, sbtm_timings)
+plot!(plt, sbtm_ns, sbtm_timings, label = "sbtm", solor = :blue, marker = :circle);
+plot!(plt, sbtm_ns, poly, label = "slope = $(round(slope, digits = 2))", color = :blue, opacity = 0.4);
+
+blob_timings = [TimerOutputs.time(blob_t["blob diffusion"]["n = $n"]["d = 10"])/10^9 for n in blob_ns]
+slope, poly = log_fit(blob_ns, blob_timings)
+plot!(plt, blob_ns, blob_timings, label = "blob", color = :red, marker = :circle);
+plot!(plt, blob_ns, poly, label = "slope = $(round(slope, digits = 2))", color = :red, opacity = 0.4)
+
+savefig(plt, "plots/diffusion_timings_gpu.png")
