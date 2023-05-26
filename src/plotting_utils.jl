@@ -70,39 +70,11 @@ function Lp_error_plot(ns, errors, labels, colors, t, d, experiment_name, k, p)
 end
 
 "ns = #particles, t = time, d = dimension"
-function mean_plot(ns, means, true_mean, labels, colors, t, d, experiment_name)
-    plt = plot(title = "$(d)d $experiment_name mean, t = $t", ylabel = "mean position 2-norm", xlabel = "number of particles")
-    plot!(plt, ns, n -> norm(true_mean), label = "true mean")
-    for (mean, label, color) in zip(means, labels, colors)
-        plot!(plt, ns, norm.(mean), label = label, marker = :circle, color = color)
-    end
-    plt
-end
-
-"ns = #particles, t = time, d = dimension"
-function covariance_norm_plot(ns, covs, true_cov, labels, colors, t, d, experiment_name)
-    plt = plot(title = "$(d)d $experiment_name covariance norm, t = $t", ylabel = "covariance norm", xlabel = "number of particles")
-    plot!(plt, ns, n -> norm(true_cov) , label = "true covariance")
-    for (covariance, label, color) in zip(covs, labels, colors)
-        plot!(plt, ns, norm.(covariance), label = label, marker = :circle, color = color)
-    end
-    plt
-end
-
-"ns = #particles, t = time, d = dimension"
-function covariance_trace_plot(ns, covs, true_cov, labels, colors, t, d, experiment_name)
-    plt = plot(title = "$(d)d $experiment_name covariance trace, t = $t", ylabel = "covariance trace", xlabel = "number of particles")
-    plot!(plt, ns, n -> tr(true_cov), label = "true covariance")
-    for (covariance, label, color) in zip(covs, labels, colors)
-        plot!(plt, ns, tr.(covariance), label = label, marker = :circle, color = color)
-    end
-    plt
-end
-
-"ns = #particles, t = time, d = dimension"
 function mean_diff_plot(ns, means, true_mean, labels, colors, t, d, experiment_name)
     plt = plot(title = "$(d)d $experiment_name mean, t = $t", ylabel = "mean position 2-norm", xlabel = "number of particles", xscale = :log, yscale = :log)
     true_means = [true_mean for _ in 1:length(ns)]
+    @assert size(true_mean, 1) == d
+    @assert size(means[1][1], 1) == d
     for (mean, label, color) in zip(means, labels, colors)
         ys = norm.(mean .- true_means)
         fit_log = Polynomials.fit(log.(ns), log.(ys), 1)
@@ -118,6 +90,9 @@ end
 function covariance_diff_norm_plot(ns, covs, true_cov, labels, colors, t, d, experiment_name)
     plt = plot(title = "$(d)d $experiment_name covariance difference, 2-norm, t = $t", ylabel = "norm of diff from true cov", xlabel = "number of particles", xscale = :log, yscale = :log)
     true_covs = [true_cov for _ in 1:length(ns)]
+    @assert size(true_cov, 1) == d
+    @assert size(true_cov, 2) == d
+    @assert size(covs[1][1], 2) == d
     for (covariance, label, color) in zip(covs, labels, colors)
         ys = norm.(covariance .- true_covs)
         fit_log = Polynomials.fit(log.(ns), log.(ys), 1)

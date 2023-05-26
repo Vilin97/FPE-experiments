@@ -1265,3 +1265,27 @@ plot!(plt, blob_ns, blob_timings, label = "blob", color = :red, marker = :circle
 plot!(plt, blob_ns, poly, label = "slope = $(round(slope, digits = 2))", color = :red, opacity = 0.4)
 
 savefig(plt, "plots/diffusion_timings_gpu.png")
+
+# integration on gpu
+using HCubature, CUDA
+CUDA.allowscalar(false)
+function Mol(ε, x, xs)
+    d = size(x, 1)
+    sum(exp.(-sum(abs2, xs .- x, dims=1)/ε)) / sqrt((π*ε)^d)
+end
+function Mol2(ε, x, xs)
+    d = size(x, 1)
+    mapreduce(exp, +, -mapreduce(abs2, +, xs .- x; dims=1)/ε) / sqrt((π*ε)^d)
+end
+n = 1_600_000
+xs = CUDA.randn(3, n)
+xsc = Array(xs)
+x = cu([1,1,1])
+xc = Array(x)
+
+@btime CUDA.@sync Mol(0.1, cu($xc), $xs) # 0.03
+@btime CUDA.@sync Mol2(0.1, cu($xc), $xs) # 0.01
+@btime CUDA.@sync Mol(0.1, $xc, $xsc) # 0.1
+
+# CUDA.@time hcubature(x -> Mol(0.1, cu(Array(x)), xs)/n, fill(-3f0, 3), fill(3f0, 3), maxevals = 10^3) # 1.7 seconds
+# @time hcubature(x -> Mol(0.1, x, xsc)/n, fill(-3f0, 3), fill(3f0, 3), maxevals = 10^3) # 3.4 seconds

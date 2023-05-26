@@ -1,4 +1,4 @@
-using Distributions, Plots, TimerOutputs, Polynomials, JLD2, DifferentialEquations, OrdinaryDiffEq, Flux, Roots
+using Distributions, Plots, TimerOutputs, Polynomials, JLD2, DifferentialEquations, OrdinaryDiffEq, Flux
 using Random: seed!
 
 include("blob.jl")
@@ -22,10 +22,10 @@ for n in ns, d in ds
 end
 
 true_dist(t, d) = MvNormal(2*(t+START)*I(d))
-true_marginal(x, t) = (4π * (t+START))^(-1/2) * exp(-x^2/(4 * (t+START)))
+true_marginal(x, t; k = 1) = (@assert k == length(x); (4π * (t+START))^(-k/2) * exp(-sum(abs2, x)/(4 * (t+START))))
 true_pdf(x, t) = (d = length(x); (4π * (t+START))^(-d/2) * exp(-sum(abs2, x)/(4 * (t+START))))
 true_slice(x, t, d) = true_pdf(x_slice(x,d), t)
-true_mean(t) = 0
+true_mean(t, d) = zeros(d)
 true_cov(t, d) = 2*(t+START)*I(d)
 x_slice(x :: Number, d; y = zeros(d-1)) = [x, y...]
 
@@ -58,8 +58,8 @@ function scatter_experiment(ds_ = ds)
     plt = plot(plots..., layout = (2,2), size = (1500, 1500))
 end
 
-scatter_plt = scatter_experiment()
-savefig(scatter_plt, "plots/$(EXPNAME) scatter, start $START")
+# scatter_plt = scatter_experiment();
+# savefig(scatter_plt, "plots/$(EXPNAME) scatter, start $START")
 
 ############ pdf plots ############
 
@@ -111,24 +111,14 @@ function pdf_experiment(ns_ = ns[end-1:end], time_indices = [1,2,3]; d, slice = 
     plt = plot(plots..., layout = (length(time_indices), length(ns_)), size = (1800, 1000))
 end
 
-plt2 = pdf_experiment(d = 2)
-plt3 = pdf_experiment(d = 3)
-plt5 = pdf_experiment(d = 5)
-plt10 = pdf_experiment(d = 10)
-
-plt2 = pdf_experiment(d = 2, slice = false)
-plt3 = pdf_experiment(d = 3, slice = false)
-plt5 = pdf_experiment(d = 5, slice = false)
-plt10 = pdf_experiment(d = 10, slice = false)
+plt2 = pdf_experiment(d = 2, slice = false);
+plt3 = pdf_experiment(d = 3, slice = false);
+plt5 = pdf_experiment(d = 5, slice = false);
+plt10 = pdf_experiment(d = 10, slice = false);
 savefig(plt2, "plots/$(EXPNAME) 2d marginal pdfs combined, start $START")
 savefig(plt3, "plots/$(EXPNAME) 3d marginal pdfs combined, start $START")
 savefig(plt5, "plots/$(EXPNAME) 5d marginal pdfs combined, start $START")
 savefig(plt10, "plots/$(EXPNAME) 10d marginal pdfs combined, start $START")
-
-plt2_ = pdf_experiment([ns[end]], [3]; d = 2, slice = false);
-plt10_ = pdf_experiment([ns[end]], [3]; d = 10, slice = false);
-plt_2_10 = plot(plt2_, plt10_, layout = (1,2), size = (1200, 400))
-savefig(plt_2_10, "plots/$(EXPNAME) 2d and 10d marginal pdfs, start $START")
 
 ############ entropy plots ############
 function entropy_plot(solutions, labels)
@@ -161,35 +151,37 @@ function entropy_experiment(ns_ = ns[1:3], ds_ = ds[1:end-1])
     plt = plot(plots..., layout = (length(ds_), length(ns_)), size = (1800, 900))
 end
 
-entropy_plt = entropy_experiment()
-savefig(entropy_plt, "plots/$(EXPNAME) entropy, start $START")
+# entropy_plt = entropy_experiment()
+# savefig(entropy_plt, "plots/$(EXPNAME) entropy, start $START")
 
 ############ Lp error plots ############
 
 "Change n, plot Lp error of k-particles marginal at end time vs n."
-function Lp_error_experiment(d=3; p=2, k=2, verbose = 0, kwargs...)
-    t_range = SAVEAT
-    plots = []
-    for (i,t) in enumerate(t_range)
+function Lp_error_experiment(ds_ = ds, ns_ = ns; p=2, k=2, verbose = 0, kwargs...)
+    ts = SAVEAT
+    plots = Matrix{Plots.Plot}(undef, length(ts), length(ds_))
+    for (i,t) in enumerate(ts), (j,d) in enumerate(ds_)
         sbtm_errors = Float64[]
         blob_errors = Float64[]
-        @views for n in ns
-            verbose > 0 && println("t = $t, n = $n")
-            solution_sbtm = JLD2.load("$(EXPNAME)_experiment/sbtm_n_$(n)_runs_$(NUMRUNS)_start_$(START).jld2", "solution")
-            solution_blob = JLD2.load("$(EXPNAME)_experiment/blob_n_$(n)_runs_$(NUMRUNS)_start_$(START).jld2", "solution")
-            lp_error_sbtm = Lp_error_slice(solution_sbtm[i], x->true_pdf(x, K(t)); k=k, p=p, verbose = verbose, kwargs...)
-            lp_error_blob = Lp_error_slice(solution_blob[i], x->true_pdf(x, K(t)); k=k, p=p, verbose = verbose, kwargs...)
+        @views for n in ns_
+            @show t, d, n
+            solution_sbtm = JLD2.load(sbtm_path(d, n), "solution")[i]
+            solution_blob = JLD2.load(blob_path(d, n), "solution")[i]
+            split_sbtm_sol = reshape(solution_sbtm, d, n, NUMRUNS)
+            split_blob_sol = reshape(solution_blob, d, n, NUMRUNS)
+            lp_error_sbtm = sum(Lp_error_marginal(split_sbtm_sol[:,:,run], x->true_marginal(x, t; k=k); k=k, p=p, verbose = verbose, kwargs...) for run in 1:NUMRUNS) / NUMRUNS
+            lp_error_blob = sum(Lp_error_marginal(split_blob_sol[:,:,run], x->true_marginal(x, t; k=k); k=k, p=p, verbose = verbose, kwargs...) for run in 1:NUMRUNS) / NUMRUNS
             push!(sbtm_errors, lp_error_sbtm)
             push!(blob_errors, lp_error_blob)
         end
-        Lp_errors_plot = Lp_error_plot(ns, [sbtm_errors, blob_errors], ["sbtm", "blob"], [:red, :green], t, d, "$(EXPNAME)", k, p)
-        push!(plots, Lp_errors_plot)
+        Lp_errors_plot = Lp_error_plot(ns_, [sbtm_errors, blob_errors], ["sbtm", "blob"], [:red, :green], t, d, "$(EXPNAME)", k, p)
+        plots[i, j] = Lp_errors_plot
     end
-    Lp_plots = plot(plots..., layout = (length(plots), 1), size = (1500, 1000))
+    Lp_plots = plot(plots..., layout = (length(ds_), length(ts)), size = (1500, 1000))
 end
 
-L2_error_plot = Lp_error_experiment(;verbose = 1, xlim = 2, rtol = 2 * 0.02, k = 2)
-savefig(L2_error_plot, "plots/$(EXPNAME) 3d L2 error combined")
+@time L2_error_plot = Lp_error_experiment(ds, ns; verbose = 0, xlim = 2, rtol = 2 * 0.02, k = 2);
+savefig(L2_error_plot, "plots/$(EXPNAME)  L2 error combined")
 
 ############ KL divergence plots ############
 function KL_divergence_experiment(;verbose = 0)
@@ -213,8 +205,8 @@ function KL_divergence_experiment(;verbose = 0)
     plot(plots..., layout = (length(plots), 1), size = (1000, 1000))
 end
 
-kl_plot = KL_divergence_experiment(verbose=1)
-savefig(kl_plot, "plots/$(EXPNAME) 3d KL divergence")
+# kl_plot = KL_divergence_experiment(verbose=1)
+# savefig(kl_plot, "plots/$(EXPNAME) 3d KL divergence")
 
 ############ score plots ############
 
@@ -240,8 +232,8 @@ function score_error_experiment()
     end
     plt
 end
-score_error_plot = score_error_experiment()
-savefig(score_plot, "plots/$(EXPNAME) 3d NN R^2, start $START")
+# score_error_plot = score_error_experiment()
+# savefig(score_plot, "plots/$(EXPNAME) 3d NN R^2, start $START")
 
 function score_slice_experiment(ns_indices = [length(ns)-1, length(ns)], time_indices = [1,2,3])
     plots = Matrix{Plots.Plot}(undef, length(ns_indices), length(time_indices))
@@ -264,8 +256,8 @@ function score_slice_experiment(ns_indices = [length(ns)-1, length(ns)], time_in
     end
     plt = plot(plots..., layout = (length(time_indices), length(ns_indices)), size = (1800, 1000))
 end
-score_slice_plot = score_slice_experiment()
-savefig(score_slice_plot, "plots/$(EXPNAME) 3d score slice, start $START")
+# score_slice_plot = score_slice_experiment()
+# savefig(score_slice_plot, "plots/$(EXPNAME) 3d score slice, start $START")
 
 ############ moments plots ############
 empirical_first_moment(xs :: AbstractArray{T, 2}) where T = vec(mean(xs, dims = 2))
@@ -277,29 +269,39 @@ function average_covariance(xs :: AbstractArray{T, 2}, num_runs) where T
 end
 split_into_runs(xs :: AbstractArray{T, 2}, num_runs) where T = reshape(xs, size(xs, 1), :, num_runs)
 
-function moment_experiment(d=3)
-    t_range = SAVEAT
+function moment_experiment(ds_=ds, ns_ = ns)
+    ts = SAVEAT
     plots = []
-    for (i,t) in enumerate(t_range)
+    mean_plots = Matrix{Plots.Plot}(undef, length(ts), length(ds_))
+    cov_norm_plots = Matrix{Plots.Plot}(undef, length(ts), length(ds_))
+    cov_trace_plots = Matrix{Plots.Plot}(undef, length(ts), length(ds_))
+    for (i,t) in enumerate(ts), (j,d) in enumerate(ds_)
         means_sbtm = []
         means_blob = []
         covs_sbtm = []
         covs_blob = []
-        @views for n in ns
-            solution_sbtm = JLD2.load("$(EXPNAME)_experiment/sbtm_n_$(n)_runs_$(NUMRUNS)_start_$(START).jld2", "solution")
-            solution_blob = JLD2.load("$(EXPNAME)_experiment/blob_n_$(n)_runs_$(NUMRUNS)_start_$(START).jld2", "solution")
-            push!(means_sbtm, mean(empirical_first_moment(solution_sbtm[i])))
-            push!(means_blob, mean(empirical_first_moment(solution_blob[i])))
+        @views for n in ns_
+            solution_sbtm = JLD2.load(sbtm_path(d, n), "solution")
+            solution_blob = JLD2.load(blob_path(d, n), "solution")
+            push!(means_sbtm, empirical_first_moment(solution_sbtm[i]))
+            push!(means_blob, empirical_first_moment(solution_blob[i]))
             push!(covs_sbtm, average_covariance(solution_sbtm[i], NUMRUNS))
             push!(covs_blob, average_covariance(solution_blob[i], NUMRUNS))
         end
-        mean_plt = mean_diff_plot(ns, [means_sbtm, means_blob], true_mean(K(t)), ["sbtm", "blob"], [:red, :green], t, d, "$(EXPNAME)")
-        cov_norm_plot = covariance_diff_norm_plot(ns, [covs_sbtm, covs_blob], true_cov(K(t)), ["sbtm", "blob"], [:red, :green], t, d, "$(EXPNAME)")
-        cov_trace_plot = covariance_diff_trace_plot(ns, [covs_sbtm, covs_blob], true_cov(K(t)), ["sbtm", "blob"], [:red, :green], t, d, "$(EXPNAME)")
-        push!(plots, mean_plt, cov_norm_plot, cov_trace_plot)
+        mean_plt = mean_diff_plot(ns_, [means_sbtm, means_blob], true_mean(t, d), ["sbtm", "blob"], [:red, :green], t, d, "$(EXPNAME)")
+        cov_norm_plot = covariance_diff_norm_plot(ns_, [covs_sbtm, covs_blob], true_cov(t, d), ["sbtm", "blob"], [:red, :green], t, d, "$(EXPNAME)")
+        cov_trace_plot = covariance_diff_trace_plot(ns_, [covs_sbtm, covs_blob], true_cov(t, d), ["sbtm", "blob"], [:red, :green], t, d, "$(EXPNAME)")
+        mean_plots[i,j] = mean_plt
+        cov_norm_plots[i,j] = cov_norm_plot
+        cov_trace_plots[i,j] = cov_trace_plot
     end
-    plot(plots..., layout = (3, length(t_range)), size = (1800, 1000))
+    mean_plot = plot(mean_plots..., layout = (length(ds_), length(ts)), size = (1800, 1000))
+    cov_norm_plot = plot(cov_norm_plots..., layout = (length(ds_), length(ts)), size = (1800, 1000))
+    cov_trace_plot = plot(cov_trace_plots..., layout = (length(ds_), length(ts)), size = (1800, 1000))
+    return mean_plot, cov_norm_plot, cov_trace_plot
 end
 
-moment_plot = moment_experiment()
-savefig(moment_plot, "plots/$(EXPNAME) 3d moments")
+mean_plt, cov_norm_plt, cov_trace_plt = moment_experiment()
+savefig(mean_plt, "plots/$(EXPNAME) mean")
+savefig(cov_norm_plt, "plots/$(EXPNAME) cov norm")
+savefig(cov_trace_plt, "plots/$(EXPNAME) cov trace")
