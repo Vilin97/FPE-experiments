@@ -1289,3 +1289,34 @@ xc = Array(x)
 
 # CUDA.@time hcubature(x -> Mol(0.1, cu(Array(x)), xs)/n, fill(-3f0, 3), fill(3f0, 3), maxevals = 10^3) # 1.7 seconds
 # @time hcubature(x -> Mol(0.1, x, xsc)/n, fill(-3f0, 3), fill(3f0, 3), maxevals = 10^3) # 3.4 seconds
+
+
+
+# comparing sbtm and blob vs exact score
+include("sbtm.jl")
+include("blob.jl")
+d, n = 2, 1000
+xs, ts, b, D, ρ₀, ρ = pure_diffusion(d, n; dt = 0.01, t_end = 10.)
+exact_score(t, xs) = score(ρ(t), xs)
+exact_sol=exact_fpe(xs, ts, b, D; exact_score = exact_score, saveat = ts)
+sbtm_sol, models, _ = sbtm_fpe(xs, ts, b, D; ρ₀ = ρ(0.), saveat = ts, record_models = true)
+blob_sol = blob_fpe(xs, ts, b, D; ε = epsilon(d,n), saveat = ts)
+
+using Plots
+scatter(exact_sol[end][1,:], exact_sol[end][2,:], label = "exact");
+scatter!(sbtm_sol[end][1,:], sbtm_sol[end][2,:], label = "sbtm");
+scatter!(blob_sol[end][1,:], blob_sol[end][2,:], label = "blob");
+scatter!(xs[1,:], xs[2,:], label = "start", size = (1000, 1000))
+
+sbtm_errors = [norm(exact_sol[k] .- sbtm_sol[k]) for k in 1:length(ts)]
+blob_errors = [norm(exact_sol[k] .- blob_sol[k]) for k in 1:length(ts)]
+plot(ts, sbtm_errors, label = "sbtm");
+plot!(ts, blob_errors, label = "blob")
+
+sbtm_scores = models[1](xs)
+blob_scores = blob_score(xs, epsilon(d,n))
+exact_scores = exact_score(0, xs)
+
+norm(sbtm_scores .- exact_scores)
+norm(blob_scores .- exact_scores)
+norm(exact_scores)

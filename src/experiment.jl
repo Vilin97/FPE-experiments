@@ -8,6 +8,7 @@ include("fpe/sbtm.jl")
 include("blob.jl")
 include("landau/blob.jl")
 include("fpe/blob.jl")
+include("fpe/exact.jl")
 
 # first example from paper
 function moving_trap_experiment_combined(N, num_samples, num_timestamps; folder = "data")
@@ -110,20 +111,17 @@ function do_experiment(ds, experiment, experiment_name; methods = [sbtm, blob], 
     print_timer()
 end
 
-function diffusion_sbtm_experiment(ds, ns; num_runs = 10, verbose = 1)
-    # ds = [2]
-    # ns = [1_000]
-    reset_timer!()
-    @timeit "sbtm" for d in ds
-        @timeit "d = $d" for n in ns
+@timeit "sbtm" function diffusion_sbtm_experiment(ds, ns; num_runs = 10, verbose = 1)
+    for n in ns
+        @timeit "n = $n" for d in ds
             pre_trained_s = load("models/diffusion_model_d_$(d)_n_$(20000)_start_1.jld2", "s")
             xs, ts, b, D, ρ₀, ρ = pure_diffusion(d, n)
             saveat = ts[[1, (length(ts)+1)÷2, end]]
             combined_solution = [zeros(eltype(xs), d, n*num_runs) for _ in saveat]
             @show d, n
             combined_models = Matrix{Chain}(undef, length(saveat), num_runs)
-            @timeit "n = $n" for run in 1:num_runs
-                Random.seed!(run)
+            @timeit "d = $d" for run in 1:num_runs
+                Random.seed!(d*n*run)
                 xs, ts, b, D, ρ₀, ρ = pure_diffusion(d, n)
                 xs = Float32.(xs)
                 s = deepcopy(pre_trained_s)
@@ -143,14 +141,11 @@ function diffusion_sbtm_experiment(ds, ns; num_runs = 10, verbose = 1)
             "num_runs", num_runs,
             "timer", TimerOutputs.get_defaulttimer(),
             "ts", ts)
-            print_timer()
         end
     end
 end
 
-function diffusion_blob_experiment(ds, ns; num_runs = 10, verbose = 1)
-    # ds = [2]
-    # ns = [100,1_000, 5000]
+@timeit "blob" function diffusion_blob_experiment(ds, ns; num_runs = 10, verbose = 1)
     for n in ns
         @timeit "n = $n" for d in ds
             ε = Float32(epsilon(d, n))
@@ -159,7 +154,7 @@ function diffusion_blob_experiment(ds, ns; num_runs = 10, verbose = 1)
             combined_solution = [zeros(eltype(xs), d, n*num_runs) for _ in saveat]
             @show d, n, ε
             @timeit "d = $d" for run in 1:num_runs
-                Random.seed!(run)
+                Random.seed!(d*n*run)
                 xs, ts, b, D, ρ₀, ρ = pure_diffusion(d, n)
                 solution = blob_fpe(xs, ts, b, D; verbose = verbose, saveat = saveat, ε = ε, usegpu = true)
                 for i in 1:length(saveat)
@@ -175,15 +170,43 @@ function diffusion_blob_experiment(ds, ns; num_runs = 10, verbose = 1)
             "timer", TimerOutputs.get_defaulttimer(),
             "ts", ts)
         end
-        print_timer()
     end
 end
-# ds = [2, 3, 5, 10]
-ds = [3, 5, 10]
+
+@timeit "exact" function diffusion_exact_experiment(ds, ns; num_runs = 10, verbose = 1)
+    for n in ns
+        @timeit "n = $n" for d in ds
+            xs, ts, b, D, ρ₀, ρ = pure_diffusion(d, n)
+            saveat = ts[[1, (length(ts)+1)÷2, end]]
+            combined_solution = [zeros(eltype(xs), d, n*num_runs) for _ in saveat]
+            @show d, n
+            @timeit "d = $d" for run in 1:num_runs
+                Random.seed!(d*n*run)
+                xs, ts, b, D, ρ₀, ρ = pure_diffusion(d, n)
+                exact_score(t, x) = score(ρ(t), x)
+                solution = exact_fpe(xs, ts, b, D; exact_score = exact_score, saveat = saveat)
+                for i in 1:length(saveat)
+                    combined_solution[i][:, (run-1)*n+1 : run*n] .= solution.u[i]
+                end
+            end
+            JLD2.save("diffusion_experiment/exact_d_$(d)_n_$(n)_runs_$(num_runs).jld2", 
+            "solution", combined_solution,
+            "saveat", saveat,
+            "n", n,
+            "num_runs", num_runs,
+            "timer", TimerOutputs.get_defaulttimer(),
+            "ts", ts)
+        end
+    end
+end
+ds = [2, 3, 5, 10]
 ns = [2_500, 5_000, 10_000, 20_000, 40_000, 80_000, 160_000]
-# diffusion_sbtm_experiment(ds, ns; num_runs = 10)
+# ds = [2]
+# ns = [100,200]
 reset_timer!()
-@timeit "blob diffusion" diffusion_blob_experiment(ds, ns; num_runs = 10)
+diffusion_exact_experiment(ds, ns; num_runs = 20)
+diffusion_sbtm_experiment(ds, ns; num_runs = 20)
+diffusion_blob_experiment(ds, ns; num_runs = 20)
 print_timer()
 
 function landau_sbtm_experiment(;num_runs = 10, verbose = 1)

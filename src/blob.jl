@@ -2,7 +2,6 @@ using LoopVectorization, CUDA, Flux
 
 function score_params(xs :: Array, ε :: T) where T
     n = num_particles(xs)
-    d = get_d(xs)
     diff_norm2s = zeros(T, n, n)
     mol_sum = zeros(T, n)
     mols = zeros(T, n, n)
@@ -11,9 +10,15 @@ end
 
 function score_params(xs :: CuArray, ε :: T) where T
     n = num_particles(xs)
-    d = get_d(xs)
-    mol_sum = zeros(T, n) |> gpu
+    mol_sum = CUDA.zeros(T, n)
     (ε, mol_sum)
+end
+
+function blob_score(xs, ε)
+    pars = score_params(xs, ε)
+    score_values = zero(xs)
+    blob_score!(score_values, xs, pars)
+    score_values
 end
 
 function blob_score!(score_array :: Array, xs :: Array, pars)

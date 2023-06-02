@@ -24,8 +24,8 @@ end
 l2_error_normalized(s, xs, ρ) = l2_error_normalized(s, xs, score(ρ, xs))
 l2_error_normalized(s, xs, ys :: AbstractArray) = sum(abs2, s(xs) .- ys) / sum(abs2, ys)
 function initialize_s!(s, ρ₀, xs :: AbstractArray{T}; optimiser = Adam(10^-3), loss_tolerance = T(10^-4), verbose = 0, max_iterations = 10^5, record_losses = false, batchsize=min(2^8, num_particles(xs)), kwargs...) where T
-    verbose > 0 && println("Initializing NN for $(num_particles(xs)) particles.")
-    verbose > 1 && println("Batch size = $batchsize, loss_tolerance = $loss_tolerance, max_iterations = $max_iterations. \n$s")
+    verbose > 1 && println("Initializing NN for $(num_particles(xs)) particles.")
+    verbose > 2 && println("Batch size = $batchsize, loss_tolerance = $loss_tolerance, max_iterations = $max_iterations. \n$s")
     ys = score(ρ₀, xs)
     data_loader = DataLoader((data=xs, label=ys), batchsize=batchsize);
     state = Flux.setup(optimiser, s)
@@ -51,7 +51,7 @@ function initialize_s!(s, ρ₀, xs :: AbstractArray{T}; optimiser = Adam(10^-3)
         epoch += 1
     end
     final_loss = l2_error_normalized(s, xs, ys)
-    verbose > 0 && println("Initialized NN in $iteration iterations. Loss = $final_loss.")
+    verbose > 1 && println("Initialized NN in $iteration iterations. Loss = $final_loss.")
     # iteration, losses
     nothing
 end

@@ -1,4 +1,4 @@
-using Statistics, LinearAlgebra, Distributions, HCubature, Zygote, DifferentialEquations, CUDA, Flux
+using Statistics, LinearAlgebra, Distributions, HCubature, Zygote, DifferentialEquations, CUDA, Flux, JLD2
 import Distributions.gradlogpdf
 
 ############ fast linear algebra ############
@@ -124,6 +124,7 @@ end
 function Lp_error_marginal(u_ :: AbstractArray, pdf; ε = 0.1, p = 2, verbose = 0, xlim = 10, k = 1, max_evals = 10^5, rtol = 0.05, kwargs...)
     n = num_particles(u_)
     d = get_d(u_)
+    k = min(k, d)
     u = reshape(u_, d, n)[1:k, :]
     empirical_pdf(x) = reconstruct_pdf(ε, x, u)
     diff(x) = (abs(empirical_pdf(x) - pdf(x)))^p 
@@ -218,8 +219,7 @@ function attractive_origin(d, n, dt = 0.005, t_end = 1.)
     xs, ts, b, D, ρ₀, ρ
 end
 
-"set ε ~ n^(k/d) to account for particles getting sparser with dimension. At c = 1, k = 1, epsilon(2,4000) = 0.05"
-epsilon(d, n, c = 1., k=1) = c * 4000. ^(k/2) / (20. * n^(k/d))
+epsilon(d, n) = rec_epsilon(n, d)
 
 ######## Landau equation in 3D ########
 "reconstruction epsilon = 2*h^2"

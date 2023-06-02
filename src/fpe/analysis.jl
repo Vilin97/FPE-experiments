@@ -12,13 +12,13 @@ const SAVEAT = [0., 1., 2.]
 const NUMRUNS = 10
 const ds = [2,3,5,10]
 const ns = [2_500, 5_000, 10_000, 20_000, 40_000, 80_000, 160_000]
-sbtm_path(d, n) = "diffusion_experiment/sbtm_d_$(d)_n_$(n)_runs_$(NUMRUNS).jld2"
-blob_path(d, n) = "diffusion_experiment/blob_d_$(d)_n_$(n)_runs_$(NUMRUNS).jld2"
-for n in ns, d in ds
-    @assert load(sbtm_path(d, n), "num_runs") == NUMRUNS
-    @assert load(sbtm_path(d, n), "saveat") == SAVEAT
-    @assert load(blob_path(d, n), "num_runs") == NUMRUNS
-    @assert load(blob_path(d, n), "saveat") == SAVEAT
+const labels = labels
+const colors = [:red, :green, :purple]
+path(d, n, label) = "diffusion_experiment/$(label)_d_$(d)_n_$(n)_runs_$(NUMRUNS).jld2"
+solutions(d, n) = [JLD2.load(path(d, n, label), "solution") for label in labels]
+for n in ns, d in ds, label in labels
+    @assert load(path(d, n, label), "num_runs") == NUMRUNS
+    @assert load(path(d, n, label), "saveat") == SAVEAT
 end
 
 true_dist(t, d) = MvNormal(2*(t+START)*I(d))
@@ -51,15 +51,13 @@ function scatter_experiment(ds_ = ds)
     n = 2500
     time_index = 3
     for (j, d) in enumerate(ds_)
-        solution_sbtm = JLD2.load(sbtm_path(d, n), "solution")
-        solution_blob = JLD2.load(blob_path(d, n), "solution")
-        plots[j] = scatter_plot([solution_sbtm, solution_blob], ["sbtm", "blob"]; time_index = time_index)
+        plots[j] = scatter_plot(solutions(d, n), labels; time_index = time_index)
     end
     plt = plot(plots..., layout = (2,2), size = (1500, 1500))
 end
 
-# scatter_plt = scatter_experiment();
-# savefig(scatter_plt, "plots/$(EXPNAME) scatter, start $START")
+scatter_plt = scatter_experiment();
+savefig(scatter_plt, "plots/$(EXPNAME) scatter, start $START")
 
 ############ pdf plots ############
 
@@ -95,30 +93,21 @@ function marginal_pdf_plot(solutions, labels; time_index)
     plt
 end
 
-function pdf_experiment(ns_ = ns[end-1:end], time_indices = [1,2,3]; d, slice = true)
-    plots = Matrix{Plots.Plot}(undef, length(ns_), length(time_indices))
-    for (i,n) in enumerate(ns_)
-        for (j,time_index) in enumerate(time_indices)
-            solution_sbtm = JLD2.load(sbtm_path(d, n), "solution")
-            solution_blob = JLD2.load(blob_path(d, n), "solution")
-            if slice
-                plots[i,j] = slice_pdf_plot([solution_sbtm, solution_blob], ["sbtm", "blob"]; time_index = time_index)
-            else
-                plots[i,j] = marginal_pdf_plot([solution_sbtm, solution_blob], ["sbtm", "blob"]; time_index = time_index)
-            end
+function pdf_experiment(ns_ = ns[end], time_indices = [1,2,3], ds_ = ds; slice = true)
+    plots = Array{Plots.Plot, 3}(undef, length(ns_), length(time_indices), length(ds_))
+    for (i,n) in enumerate(ns_), (j,time_index) in enumerate(time_indices), (k, d) in enumerate(ds_)
+        @show n, time_index, d
+        if slice
+            plots[i,j,k] = slice_pdf_plot(solutions(d, n), labels; time_index = time_index)
+        else
+            plots[i,j,k] = marginal_pdf_plot(solutions(d, n), labels; time_index = time_index)
         end
     end
-    plt = plot(plots..., layout = (length(time_indices), length(ns_)), size = (1800, 1000))
+    plt = plot(plots..., layout = (length(ds_), length(time_indices)*length(ns_)), size = (1800, 1000))
 end
 
-plt2 = pdf_experiment(d = 2, slice = false);
-plt3 = pdf_experiment(d = 3, slice = false);
-plt5 = pdf_experiment(d = 5, slice = false);
-plt10 = pdf_experiment(d = 10, slice = false);
-savefig(plt2, "plots/$(EXPNAME) 2d marginal pdfs combined, start $START")
-savefig(plt3, "plots/$(EXPNAME) 3d marginal pdfs combined, start $START")
-savefig(plt5, "plots/$(EXPNAME) 5d marginal pdfs combined, start $START")
-savefig(plt10, "plots/$(EXPNAME) 10d marginal pdfs combined, start $START")
+plt = pdf_experiment(slice = false);
+savefig(plt, "plots/$(EXPNAME) marginal pdfs combined, start $START")
 
 ############ entropy plots ############
 function entropy_plot(solutions, labels)
@@ -141,18 +130,15 @@ end
 
 function entropy_experiment(ns_ = ns[1:3], ds_ = ds[1:end-1])
     plots = Matrix{Plots.Plot}(undef, length(ns_), length(ds_))
-    for (i,n) in enumerate(ns_)
-        for (j,d) in enumerate(ds_)
-            solution_sbtm = JLD2.load(sbtm_path(d, n), "solution")
-            solution_blob = JLD2.load(blob_path(d, n), "solution")
-            plots[i,j] = entropy_plot([solution_sbtm, solution_blob], ["sbtm", "blob"])
-        end
+    for (i,n) in enumerate(ns_), (j,d) in enumerate(ds_)
+        @show n, d
+        plots[i,j] = entropy_plot(solutions(d, n), labels)
     end
     plt = plot(plots..., layout = (length(ds_), length(ns_)), size = (1800, 900))
 end
 
-# entropy_plt = entropy_experiment()
-# savefig(entropy_plt, "plots/$(EXPNAME) entropy, start $START")
+entropy_plt = entropy_experiment()
+savefig(entropy_plt, "plots/$(EXPNAME) entropy, start $START")
 
 ############ Lp error plots ############
 
@@ -161,27 +147,22 @@ function Lp_error_experiment(ds_ = ds, ns_ = ns; p=2, k=2, verbose = 0, kwargs..
     ts = SAVEAT
     plots = Matrix{Plots.Plot}(undef, length(ts), length(ds_))
     for (i,t) in enumerate(ts), (j,d) in enumerate(ds_)
-        sbtm_errors = Float64[]
-        blob_errors = Float64[]
-        @views for n in ns_
-            @show t, d, n
-            solution_sbtm = JLD2.load(sbtm_path(d, n), "solution")[i]
-            solution_blob = JLD2.load(blob_path(d, n), "solution")[i]
-            split_sbtm_sol = reshape(solution_sbtm, d, n, NUMRUNS)
-            split_blob_sol = reshape(solution_blob, d, n, NUMRUNS)
-            lp_error_sbtm = sum(Lp_error_marginal(split_sbtm_sol[:,:,run], x->true_marginal(x, t; k=k); k=k, p=p, verbose = verbose, kwargs...) for run in 1:NUMRUNS) / NUMRUNS
-            lp_error_blob = sum(Lp_error_marginal(split_blob_sol[:,:,run], x->true_marginal(x, t; k=k); k=k, p=p, verbose = verbose, kwargs...) for run in 1:NUMRUNS) / NUMRUNS
-            push!(sbtm_errors, lp_error_sbtm)
-            push!(blob_errors, lp_error_blob)
+        errors = [Vector{eltype(ts)}(undef, length(ns_)) for _ in labels]
+        @views for (n_idx, n) in enumerate(ns_), (l, label) in enumerate(labels)
+            @show t, d, n, label
+            solution = JLD2.load(path(d, n, label), "solution")[i]
+            split_sol = reshape(solution, d, n, NUMRUNS)
+            lp_error = sum(Lp_error_marginal(split_sol[:,:,run], x->true_marginal(x, t; k=k); k=k, p=p, verbose = verbose, kwargs...) for run in 1:NUMRUNS) / NUMRUNS
+            errors[l][n_idx] = lp_error
         end
-        Lp_errors_plot = Lp_error_plot(ns_, [sbtm_errors, blob_errors], ["sbtm", "blob"], [:red, :green], t, d, "$(EXPNAME)", k, p)
+        Lp_errors_plot = Lp_error_plot(ns_, errors, labels, colors, t, d, "$(EXPNAME)", k, p)
         plots[i, j] = Lp_errors_plot
     end
-    Lp_plots = plot(plots..., layout = (length(ds_), length(ts)), size = (1500, 1000))
+    Lp_plots = plot(plots..., layout = (length(ds_), length(ts)), size = (1800, 1000))
 end
 
 @time L2_error_plot = Lp_error_experiment(ds, ns; verbose = 0, xlim = 2, rtol = 2 * 0.02, k = 2);
-savefig(L2_error_plot, "plots/$(EXPNAME)  L2 error combined")
+savefig(L2_error_plot, "plots/$(EXPNAME) L2 error combined")
 
 ############ KL divergence plots ############
 function KL_divergence_experiment(;verbose = 0)
@@ -199,7 +180,7 @@ function KL_divergence_experiment(;verbose = 0)
             push!(sbtm_errors, kl_div_sbtm)
             push!(blob_errors, kl_div_blob)
         end
-        plts = kl_div_plot(ns, [sbtm_errors, blob_errors], ["sbtm", "blob"], [:red, :green], t, "$(EXPNAME)")
+        plts = kl_div_plot(ns,labels, [:red, :green], t, "$(EXPNAME)")
         push!(plots, plts)
     end
     plot(plots..., layout = (length(plots), 1), size = (1000, 1000))
@@ -271,26 +252,20 @@ split_into_runs(xs :: AbstractArray{T, 2}, num_runs) where T = reshape(xs, size(
 
 function moment_experiment(ds_=ds, ns_ = ns)
     ts = SAVEAT
-    plots = []
     mean_plots = Matrix{Plots.Plot}(undef, length(ts), length(ds_))
     cov_norm_plots = Matrix{Plots.Plot}(undef, length(ts), length(ds_))
     cov_trace_plots = Matrix{Plots.Plot}(undef, length(ts), length(ds_))
     for (i,t) in enumerate(ts), (j,d) in enumerate(ds_)
-        means_sbtm = []
-        means_blob = []
-        covs_sbtm = []
-        covs_blob = []
-        @views for n in ns_
-            solution_sbtm = JLD2.load(sbtm_path(d, n), "solution")
-            solution_blob = JLD2.load(blob_path(d, n), "solution")
-            push!(means_sbtm, empirical_first_moment(solution_sbtm[i]))
-            push!(means_blob, empirical_first_moment(solution_blob[i]))
-            push!(covs_sbtm, average_covariance(solution_sbtm[i], NUMRUNS))
-            push!(covs_blob, average_covariance(solution_blob[i], NUMRUNS))
+        means = [Vector{Vector{eltype(ts)}}(undef, length(ns_)) for _ in labels]
+        covs = [Vector{Matrix{eltype(ts)}}(undef, length(ns_)) for _ in labels]
+        @views for (n_idx, n) in enumerate(ns_), (l, label) in enumerate(labels)
+            solution = JLD2.load(path(d, n, label), "solution")
+            means[l][n_idx] = empirical_first_moment(solution[i])
+            covs[l][n_idx] = average_covariance(solution[i], NUMRUNS)
         end
-        mean_plt = mean_diff_plot(ns_, [means_sbtm, means_blob], true_mean(t, d), ["sbtm", "blob"], [:red, :green], t, d, "$(EXPNAME)")
-        cov_norm_plot = covariance_diff_norm_plot(ns_, [covs_sbtm, covs_blob], true_cov(t, d), ["sbtm", "blob"], [:red, :green], t, d, "$(EXPNAME)")
-        cov_trace_plot = covariance_diff_trace_plot(ns_, [covs_sbtm, covs_blob], true_cov(t, d), ["sbtm", "blob"], [:red, :green], t, d, "$(EXPNAME)")
+        mean_plt = mean_diff_plot(ns_, means, true_mean(t,d), labels, colors, t, d, "$(EXPNAME)")
+        cov_norm_plot = covariance_diff_norm_plot(ns_, covs, true_cov(t,d), labels, colors, t, d, "$(EXPNAME)")
+        cov_trace_plot = covariance_diff_trace_plot(ns_, covs, true_cov(t,d), labels, colors, t, d, "$(EXPNAME)")
         mean_plots[i,j] = mean_plt
         cov_norm_plots[i,j] = cov_norm_plot
         cov_trace_plots[i,j] = cov_trace_plot

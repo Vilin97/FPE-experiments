@@ -1,6 +1,7 @@
 using Flux, DifferentialEquations, TimerOutputs
 using Zygote: gradient, withgradient
 using Flux.Optimise: Adam
+using Random: randn!
 
 include("../utils.jl")
 include("../sbtm.jl")
@@ -18,7 +19,7 @@ function sbtm_fpe(xs, ts, b, D; ρ₀ = nothing, s = nothing, size_hidden=100, n
 end
 
 function sbtm_fpe_solve(xs :: AbstractArray{T}, ts, b, D, s; saveat, epochs = 25, verbose = 0, optimiser = Adam(1e-4), denoising_alpha = T(0.4), record_models = false, record_losses = false, kwargs...) where T
-    verbose > 0 && println("SBTM method. n = $(num_particles(xs)).")
+    verbose > 0 && println("SBTM method fpe. n = $(num_particles(xs)).")
     tspan = (zero(T), ts[end])
     dt = ts[2] - ts[1]
     initial = xs
@@ -37,7 +38,7 @@ function sbtm_fpe_solve(xs :: AbstractArray{T}, ts, b, D, s; saveat, epochs = 25
             end
         end
         state = Flux.setup(optimiser, s)
-        @timeit "update NN" for epoch in 1:epochs
+        for epoch in 1:epochs
             randn!(ζ)
             loss_value, grads = withgradient(s -> loss(s, xs, ζ, denoising_alpha), s)
             Flux.update!(state, s, grads[1])
