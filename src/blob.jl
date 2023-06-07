@@ -8,9 +8,9 @@ function score_params(xs :: Array, ε :: T) where T
     (ε, diff_norm2s, mol_sum, mols)
 end
 
-function score_params(xs :: CuArray, ε :: T) where T
+function score_params(xs :: CuArray, ε)
     n = num_particles(xs)
-    mol_sum = CUDA.zeros(T, n)
+    mol_sum = CUDA.zeros(n)
     (ε, mol_sum)
 end
 
@@ -47,13 +47,13 @@ function blob_score!(score_array :: CuArray, xs :: CuArray, pars)
     d, n = size(xs)
     ker = @cuda launch = false kernel1(mol_sum, xs, ε)
     config = launch_configuration(ker.fun)
-    threads = min(length(mol_sum), config.threads)
-    blocks = cld(length(mol_sum), threads)
+    threads = min(n, config.threads)
+    blocks = cld(n, threads)
     @cuda threads = threads blocks = blocks kernel1(mol_sum, xs, ε)
 
-    ker = @cuda launch = false kernel1(mol_sum, xs, ε)
+    ker = @cuda launch = false kernel2(score_array, mol_sum, xs, ε)
     config = launch_configuration(ker.fun)
-    threads = (d, div(min(length(mol_sum), config.threads), d))
+    threads = (d, div(min(n, config.threads), d))
     blocks = (1, div(n, threads[2], RoundUp))
     @cuda threads = threads blocks = blocks kernel2(score_array, mol_sum, xs, ε)
 end
@@ -76,6 +76,7 @@ function kernel2(score_array, mol_sum, xs, ε)
             score_array[k, p] += fac * (diff_k) / mol_sum[q]
         end
     end
+    nothing
 end
 
 function kernel1(mol_sum, xs, ε)
@@ -93,5 +94,5 @@ function kernel1(mol_sum, xs, ε)
         end
         mol_sum[p] = accum
     end
-    return
+    nothing
 end

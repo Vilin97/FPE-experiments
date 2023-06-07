@@ -1,4 +1,4 @@
-using Statistics, LinearAlgebra, Distributions, HCubature, Zygote, DifferentialEquations, CUDA, Flux, JLD2
+using Statistics, LinearAlgebra, Distributions, HCubature, Zygote, DifferentialEquations, CUDA, Flux, JLD2, LoopVectorization
 import Distributions.gradlogpdf
 
 ############ fast linear algebra ############
@@ -79,6 +79,11 @@ slice(f, d, k) = x -> f([x..., zeros(d-k)...])
 empirical_first_moment(xs :: AbstractArray{T, 2}) where T = vec(mean(xs, dims = 2))
 empirical_second_moment(xs :: AbstractArray{T, 2}) where T = xs * xs' / (num_particles(xs) - 1)
 empirical_covariance(xs :: AbstractArray{T, 2}) where T = empirical_second_moment(xs .- empirical_first_moment(xs))
+function average_covariance(xs :: AbstractArray{T, 2}, num_runs) where T 
+    split_xs = split_into_runs(xs, num_runs)
+    mean(empirical_covariance(run_i) for run_i in eachslice(split_xs, dims = 3))
+end
+split_into_runs(xs :: AbstractArray{T, 2}, num_runs) where T = reshape(xs, size(xs, 1), :, num_runs)
 
 ### entropies ###
 # TODO: currently incorrect
@@ -227,12 +232,12 @@ rec_epsilon(n, d = 3) = 2 * kde_bandwidth(n, d)^2
 "kernel bandwidth h ~ n^(-1/(d+4))"
 kde_bandwidth(n, d = 3) = n^(-1/(d+4)) / √2
 
-function landau(n, start_time; dt = 0.01, time_interval = 0.5)
+function landau(n, start_time; dt = 1f-2, time_interval = 0.5f0)
     K(t) = 1 - exp(-(t+start_time)/6)
     f(x, k) = (2π*k)^(-3/2) * exp(-sum(abs2, x)/(2k)) * ((5k-3)/(2k) + (1-k)/(2k^2)*norm(x)^2) # target density
     δ = 0.3 # how close the proposal distribution is to the target density
     M = 3 # upper bound on the ratio f/g in rejection sampling
-    xs = zeros(3, n)
+    xs = zeros(Float32, 3, n)
     for i in 1:n
         xs[:, i] = rejection_sample(x -> f(x, K(0)), MvNormal(K(0.)/(1-δ) * I(3)), M)
     end
@@ -254,4 +259,30 @@ function rejection_sample(target_density, proposal_dist, M)
             return x
         end
     end
+end
+
+function landau_3d_f!(dxs, xs, score_values)
+    dxs .= 0
+    n = num_particles(xs)
+    @turbo for p = 1:n
+        Base.Cartesian.@nexprs 3 i -> dx_i = zero(eltype(dxs))
+        for q = 1:n
+            dotzv = zero(eltype(dxs))
+            normsqz = zero(eltype(dxs))
+            Base.Cartesian.@nexprs 3 i -> begin
+                z_i = xs[i, p] - xs[i, q]
+                v_i = score_values[i, q] - score_values[i, p]
+                dotzv += z_i * v_i
+                normsqz += z_i * z_i
+            end
+            Base.Cartesian.@nexprs 3 i -> begin
+                dx_i += v_i * normsqz - dotzv * z_i
+            end
+        end
+        Base.Cartesian.@nexprs 3 i -> begin
+            dxs[i, p] += dx_i
+        end
+    end
+    dxs ./= 24*n
+    nothing
 end

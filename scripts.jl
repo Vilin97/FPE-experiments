@@ -1320,3 +1320,141 @@ exact_scores = exact_score(0, xs)
 norm(sbtm_scores .- exact_scores)
 norm(blob_scores .- exact_scores)
 norm(exact_scores)
+
+# clean jld2 files
+using JLD2
+# "solution", combined_solution,
+# "models", combined_models,
+# "saveat", saveat,
+for n in ns
+    data = load(path(3, n, "sbtm"))
+    data["models"] = data["models"][[1, 3, 4], :]
+    data["solution"] = data["solution"][[1, 3, 4]]
+    data["saveat"] = data["saveat"][[1, 3, 4]]
+    save(path(3, n, "sbtm"), data)
+end
+
+# landau on gpu
+include("src/landau/sbtm.jl")
+
+using CUDA
+function landau_f_sbtm1!(dxs, xs, pars, t) # CPU
+    s, s_values = pars
+    n = num_particles(xs)
+    dxs .= zero(eltype(xs))
+    s_values .= s(xs)
+    @timeit "propagate particles" @turbo for p = 1:n
+        Base.Cartesian.@nexprs 3 i -> dx_i = zero(eltype(dxs))
+        for q = 1:n
+            dotzv = zero(eltype(dxs))
+            normsqz = zero(eltype(dxs))
+            Base.Cartesian.@nexprs 3 i -> begin
+                z_i = xs[i, p] - xs[i, q]
+                v_i = s_values[i, q] - s_values[i, p]
+                dotzv += z_i * v_i
+                normsqz += z_i * z_i
+            end
+            Base.Cartesian.@nexprs 3 i -> begin
+                dx_i += v_i * normsqz - dotzv * z_i
+            end
+        end
+        Base.Cartesian.@nexprs 3 i -> begin
+            dxs[i, p] += dx_i
+        end
+    end
+    dxs ./= 24*n
+    nothing
+end
+
+function landau_f_sbtm2!(dxs, xs :: CuArray, pars, t) # GPU
+    s, s_values = pars
+    n = num_particles(xs)
+    dxs .= zero(eltype(xs))
+    s_values .= s(xs)
+    
+    ker = @cuda launch = false landau_kernel(dxs, xs, s_values)
+    config = launch_configuration(ker.fun)
+    threads = min(n, config.threads)
+    blocks = cld(n, threads)
+    @cuda threads = threads blocks = blocks landau_kernel(dxs, xs, s_values)
+
+    dxs ./= 24*n
+    nothing
+end
+
+function landau_kernel(dxs, xs, s_values) # GPU kernel
+    d, n = size(xs)
+    p = (blockIdx().x-1) * blockDim().x + threadIdx().x
+    if p <= n
+        Base.Cartesian.@nexprs 3 i -> dx_i = zero(eltype(dxs))
+        for q = 1:n
+            dotzv = zero(eltype(dxs))
+            normsqz = zero(eltype(dxs))
+            Base.Cartesian.@nexprs 3 i -> begin
+                z_i = xs[i, p] - xs[i, q]
+                v_i = s_values[i, q] - s_values[i, p]
+                dotzv += z_i * v_i
+                normsqz += z_i * z_i
+            end
+            Base.Cartesian.@nexprs 3 i -> begin
+                dx_i += v_i * normsqz - dotzv * z_i
+            end
+        end
+        Base.Cartesian.@nexprs 3 i -> begin
+            dxs[i, p] += dx_i
+        end
+    end
+    nothing
+end
+
+d = 3
+s = Chain(Dense(d, 10, softsign), Dense(10, d))
+xs = randn(Float32, d, 100_000)
+dxs = similar(xs)
+pars = (s, similar(xs))
+CUDA.@time landau_f_sbtm1!(dxs, xs, pars, 0.0) # 6s on CPU
+
+xs_d = cu(xs)
+dxs_d = similar(xs_d)
+pars_d = (s |> gpu, similar(xs_d))
+CUDA.@time CUDA.@sync landau_f_sbtm2!(dxs_d, xs_d, pars_d, 0f0) # 1s on GPU
+
+maximum(abs2, dxs .- Array(dxs_d)) # 10^-10 implying the GPU version is correct
+
+# for presentation in parallel computing class
+using CUDA
+using BenchmarkTools # benchmarking
+
+N = 2^20
+x = fill(1.0f0, N)  # Float32 vector of all ones of length N
+y = fill(2.0f0, N)  # Float32 vector of all twos of length N
+@btime $x .+ $y # 526 μs on CPU
+
+x_d = CUDA.fill(1.0f0, N)  # all ones on GPU
+y_d = CUDA.fill(2.0f0, N)  # all twos on GPU
+@btime CUDA.@sync $x_d .+ $y_d # 56 μs on GPU
+
+
+function gpu_add!(out_d, y_d, x_d)
+    index = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    stride = gridDim().x * blockDim().x
+    for i = index:stride:length(y_d)
+        @inbounds out_d[i] = y_d[i] + x_d[i]
+    end
+end
+numblocks = ceil(Int, N/256)
+x_d = CUDA.fill(1.0f0, N)  # all ones on GPU
+y_d = CUDA.fill(2.0f0, N)  # all twos on GPU
+out_d = CUDA.fill(0f0, N)
+@btime CUDA.@sync @cuda threads=256 blocks=numblocks gpu_add!(out_d, y_d, x_d) # 282 μs on GPU
+
+
+include("src/fpe/blob.jl") # load the ODE solver
+d, n = 2, 40_000
+xs, ts, b, D, _, _ = pure_diffusion(d, n; dt= 0.01, t_end= 0.02) # sample initial particles
+
+xsg = gpu(xs) # move particles to GPU
+tsg = gpu(ts) # move time points to GPU
+CUDA.@time CUDA.@sync sol_d = blob_fpe(xsg, tsg, b, D; ε = epsilon(d, n), saveat = tsg[end])[1] # 8.1 seconds on GPU
+CUDA.@time sol = blob_fpe(xs, ts, b, D; ε = epsilon(d, n), saveat = ts[end])[1] # 90 seconds on CPU
+maximum(abs2, Array(sol_d) - sol) # 0 implying the same solution

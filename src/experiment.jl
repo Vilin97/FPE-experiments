@@ -3,10 +3,13 @@ using Random: seed!
 
 include("utils.jl")
 include("sbtm.jl")
-include("landau/sbtm.jl")
-include("fpe/sbtm.jl")
 include("blob.jl")
+
+include("landau/sbtm.jl")
 include("landau/blob.jl")
+include("landau/exact.jl")
+
+include("fpe/sbtm.jl")
 include("fpe/blob.jl")
 include("fpe/exact.jl")
 
@@ -203,11 +206,12 @@ ds = [2, 3, 5, 10]
 ns = [2_500, 5_000, 10_000, 20_000, 40_000, 80_000, 160_000]
 # ds = [2]
 # ns = [100,200]
-reset_timer!()
-diffusion_exact_experiment(ds, ns; num_runs = 20)
-diffusion_sbtm_experiment(ds, ns; num_runs = 20)
-diffusion_blob_experiment(ds, ns; num_runs = 20)
-print_timer()
+
+# reset_timer!()
+# diffusion_exact_experiment(ds, ns; num_runs = 20)
+# diffusion_sbtm_experiment(ds, ns; num_runs = 20)
+# diffusion_blob_experiment(ds, ns; num_runs = 20)
+# print_timer()
 
 function landau_sbtm_experiment(;num_runs = 10, verbose = 1)
     ns = [2_500, 5_000, 10_000, 20_000, 40_000, 80_000, 160_000]
@@ -277,3 +281,37 @@ function landau_blob_experiment(;num_runs = 10, verbose = 1)
     print_timer()
 end
 # landau_blob_experiment()
+
+function landau_exact_experiment(ns; num_runs = 10, verbose = 1)
+    start_time = 6
+    K(t) = 1 - exp(-(t+start_time)/6)
+    reset_timer!()
+    for n in ns
+        ε = 0.05
+        xs, ts, ρ = landau(n, start_time)
+        saveat = ts[[1, (length(ts)+1)÷2, end]]
+        combined_solution = [zeros(size(xs, 1), size(xs, 2)*num_runs) for _ in saveat]
+        println("n = $n")
+        for run in 1:num_runs
+            @show n, run
+            seed!(run)
+            xs, ts, ρ = landau(n, start_time)
+            exact_score(t, x) = score(x_ -> ρ(x_, K(t)), x)
+            @timeit "n = $n" solution = exact_landau(xs, ts; exact_score = exact_score, ε = ε, saveat = saveat, verbose = verbose)
+            for i in 1:length(saveat)
+                combined_solution[i][:, (run-1)*size(xs, 2)+1:run*size(xs, 2)] .= solution.u[i]
+            end
+        end
+        JLD2.save("landau_experiment/exact_n_$(n)_runs_$(num_runs)_start_$(start_time).jld2", 
+        "solution", combined_solution,
+        "saveat", saveat,
+        "n", n,
+        "num_runs", num_runs,
+        "start_time", start_time,
+        "timer", TimerOutputs.get_defaulttimer())
+    end
+    print_timer()
+end
+ns = [2_500, 5_000, 10_000, 20_000, 40_000, 80_000]
+# ns = [100]
+landau_exact_experiment(ns, num_runs = 10)

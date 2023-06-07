@@ -3,6 +3,7 @@ using Random: seed!
 include("../src/utils.jl")
 include("../src/landau/blob.jl")
 include("../src/landau/sbtm.jl")
+include("../src/landau/exact.jl")
 
 ################### sampling ####################
 function test_sampling()
@@ -36,7 +37,7 @@ end
 
 ##################### solving ####################
 
-function landau_test()
+function landau_test(verbose = 1)
     println("Testing Landau")
     seed!(1234)
     
@@ -53,22 +54,39 @@ function landau_test()
     p = 2
 
     xs, ts, f = landau(n, 5.5; time_interval = time_interval)
-    initial_error = Lp_error(xs, x -> f(x, K(0)); k=3, verbose = 0)
-    println("L$p error for initial sample is $initial_error.")
-    @test initial_error < tol
-
+    exact_score(t, x) = score(x_ -> f(x_, K(t)), x)
+    true_cov = I(3)
+    
+    # error tolerance
+    lp_tol = 0.2
+    mean_tol = 0.1
+    cov_tol = 15
+    
+    # solve
+    @timeit "exact" exact_solution = exact_landau(xs, ts; exact_score = exact_score, saveat = ts[end])
     @timeit "blob" blob_solution = blob_landau(xs, ts; ε = ε, saveat = ts[end], verbose = 0)
-    error = Lp_error(blob_solution[end], x -> f(x, K(time_interval)); k=3, verbose = 0)
-    println("L$p error for blob is $error.")
-    @test error < tol
+    @timeit "sbtm" sbtm_solution, _, _ = sbtm_landau(xs, ts; ρ₀ = x->f(x, K(0)), saveat = ts[end], verbose = 0, loss_tolerance = 1e-3)
 
-    @timeit "sbtm" sbtm_solution, _, _ = sbtm_landau(Float32.(xs), ts; ρ₀ = x->f(x, K(0)), saveat = ts[end], verbose = 0, loss_tolerance = 1e-3)
-    error = Lp_error(sbtm_solution[end], x -> f(x, K(time_interval)); k=3, verbose = 0)
-    println("L$p error for sbtm is $error.")
-    @test error < tol
-    @test eltype(sbtm_solution[end]) == Float32
+    # test
+    initial_error = Lp_error(xs, x -> f(x, K(0)); k=3, verbose = 0)
+    verbose > 0 && println("L$p error for initial sample is $initial_error.")
+    @test initial_error < tol
+    for (solution, label) in [(blob_solution, "blob"), (sbtm_solution, "sbtm"), (exact_solution, "exact")]
+        @test eltype(solution[end]) == Float32
 
-    # TODO also test moments like in fpe
+        error = Lp_error(solution[end], x -> f(x, K(time_interval)); k=3, verbose = 0)
+        println("L$p error for $label is $error.")
+        @test error < lp_tol
+
+        emp_mean = empirical_first_moment(solution[end])
+        emp_cov = empirical_covariance(solution[end])
+        cov_diff = true_cov .- emp_cov
+        verbose > 0 && println("$(label) mean error = $(norm(emp_mean))")
+        verbose > 0 && println("$(label) cov norm error = $(norm(cov_diff))")
+        verbose > 0 && println("$(label) cov trace error = $(tr(cov_diff))")
+        @test norm(emp_mean) < mean_tol
+        @test norm(cov_diff) < cov_tol
+    end
 end
 
 landau_test()
