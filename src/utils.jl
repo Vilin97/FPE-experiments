@@ -232,14 +232,14 @@ rec_epsilon(n, d = 3) = 2 * kde_bandwidth(n, d)^2
 "kernel bandwidth h ~ n^(-1/(d+4))"
 kde_bandwidth(n, d = 3) = n^(-1/(d+4)) / √2
 
-function landau(n, start_time; dt = 1f-2, time_interval = 0.5f0)
-    K(t) = 1 - exp(-(t+start_time)/6)
-    f(x, k) = (2π*k)^(-3/2) * exp(-sum(abs2, x)/(2k)) * ((5k-3)/(2k) + (1-k)/(2k^2)*norm(x)^2) # target density
-    δ = 0.3 # how close the proposal distribution is to the target density
-    M = 3 # upper bound on the ratio f/g in rejection sampling
-    xs = zeros(Float32, 3, n)
+function landau(d, n, start_time; dt = 1f-2, time_interval = 0.5f0)
+    K(t) = 1 - exp(-(d-1)*(t+start_time)/12) # assumes C = 1 and B = 1/24
+    f(x, t) = (2π*K(t))^(-d/2) * exp(-sum(abs2, x)/(2K(t))) * (((d+2)*K(t)-d)/(2K(t)) + (1-K(t))/(2K(t)^2)*norm(x)^2) # target density
+    δ = 0.5 # how close the proposal distribution is to the target density
+    M = 3 # upper bound on the ratio f/g in rejection sampling, good up to d=5
+    xs = zeros(Float32, d, n)
     for i in 1:n
-        xs[:, i] = rejection_sample(x -> f(x, K(0)), MvNormal(K(0.)/(1-δ) * I(3)), M)
+        xs[:, i] = rejection_sample(x -> f(x, 0), MvNormal(K(0.) * (1+δ) * I(d)), M)
     end
     tspan = (0.,time_interval)
     ts = tspan[1]:dt:tspan[2]
