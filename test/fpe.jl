@@ -3,9 +3,10 @@ using Test, Distributions, Random, TimerOutputs
 include("../src/utils.jl")
 include("../src/fpe/blob.jl")
 include("../src/fpe/sbtm.jl")
+include("../src/fpe/exact.jl")
 
 function no_diffusion_test()
-    println("Testing FPE deterministic")
+    println("Testing FPE pure drift")
     Random.seed!(1234)
     b(x,t) = x
     D(x,t) = 0.
@@ -26,7 +27,7 @@ function no_diffusion_test()
 end
 function diffusion_test()
     println("Testing FPE pure diffusion")
-    Random.seed!(1234)
+    Random.seed!(1235)
     
     ε = 0.05
     d = 2
@@ -42,17 +43,19 @@ function diffusion_test()
     
     # cpu
     @timeit "blob" blob_solution = blob_fpe(xs, ts, b, D; ε = ε, saveat = ts[end])
-    Random.seed!(1234)
+    Random.seed!(1235)
     @timeit "sbtm" sbtm_solution, _, _ = sbtm_fpe(xs, ts, b, D; ρ₀ = ρ(0.), verbose = 0, saveat = ts[end])
     @timeit "exact" exact_solution = exact_fpe(xs, ts, b, D; exact_score = exact_score, saveat = ts[end])
 
     # gpu
     xsg = gpu(xs); tsg = gpu(ts); ε = Float32(ε)
     @timeit "blob" blob_solution_gpu = blob_fpe(xsg, tsg, b, D; ε = ε, saveat = ts[end])
-    Random.seed!(1234)
+    Random.seed!(1235)
     @timeit "sbtm" sbtm_solution_gpu, _, _ = sbtm_fpe(xsg, tsg, b, D; ρ₀ = ρ(0.), verbose = 0, saveat = ts[end])
     @test cpu(blob_solution_gpu.u) ≈ blob_solution.u rtol = 1e-2
     @test cpu(sbtm_solution_gpu.u) ≈ sbtm_solution.u rtol = 1e-2
+
+    # statistical tests
     for (solution, label) in [(blob_solution, "blob"), (sbtm_solution, "sbtm"), (exact_solution, "exact")]
         @test eltype(solution[end]) == Float32
 
